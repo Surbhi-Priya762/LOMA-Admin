@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { UIProvider } from './context/UIContext';
+import { UIProvider, useUI } from './context/UIContext';
 import { DataProvider, useData } from './context/DataContext';
+import { backupAll } from './lib/api';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import RawMaterials from './pages/RawMaterials';
@@ -17,9 +18,36 @@ const NAV_ITEMS = [
   { id: 'sales', label: 'Sales', icon: '₹' },
 ];
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function Shell() {
   const [route, setRoute] = useState('home');
   const { data, error, reload } = useData();
+  const { toast } = useUI();
+  const [backingUp, setBackingUp] = useState(false);
+
+  async function handleBackup() {
+    setBackingUp(true);
+    try {
+      const payload = await backupAll();
+      const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `loma-supabase-backup-${todayStr()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded — keep this file safe.');
+    } catch (e) {
+      toast('Backup failed: ' + (e.message || String(e)));
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   return (
     <div className="app">
@@ -41,6 +69,12 @@ function Shell() {
             {n.label}
           </button>
         ))}
+        <div style={{ marginTop: 'auto', paddingTop: 16, borderTop: '1px solid rgba(255,255,255,.15)' }}>
+          <button className="nav-item" style={{ fontSize: 11 }} onClick={handleBackup} disabled={backingUp}>
+            <span className="nav-icon">⬇</span>
+            {backingUp ? 'Backing up…' : 'Backup data'}
+          </button>
+        </div>
       </div>
       <div className="main">
         {!data && !error && <div className="loading">Loading Lõma Production Studio…</div>}

@@ -66,3 +66,17 @@ export async function recordLastUpdate(name, what) {
   if (error) throw error;
   return entry;
 }
+
+// Pulls all 6 tables fresh from Supabase for a one-click backup download.
+export async function backupAll() {
+  const d = await fetchAll();
+  return {
+    exportedAt: new Date().toISOString(),
+    products: d.products,
+    materials: d.materials,
+    productionLog: d.productionLog,
+    salesLog: d.salesLog,
+    settings: d.settings,
+    lastUpdate: d.lastUpdate,
+  };
+}
