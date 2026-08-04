@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { SIZES, todayStr, fmt, uid, materialTotalIssued } from '../lib/calc';
-import { addProductionLog, deleteProductionLog, saveProduct } from '../lib/api';
+import { addProductionLog, updateProductionLog, deleteProductionLog, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
+
+const STATUSES = ['Pending', 'In Progress', 'Ready'];
+
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  const d1 = new Date(a);
+  const d2 = new Date(b);
+  if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return null;
+  return Math.round((d2 - d1) / 86400000);
+}
 
 export default function ProductionLog({ data, reload }) {
   const { toast } = useUI();
@@ -18,6 +28,21 @@ export default function ProductionLog({ data, reload }) {
 
   const sorted = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+  async function adjustStockForStatusChange(entry, wasReady, willBeReady) {
+    if (wasReady === willBeReady) return;
+    const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
+    if (!p) return;
+    const delta = (willBeReady ? 1 : 0) - (wasReady ? 1 : 0);
+    const updated = {
+      ...p,
+      sizes: p.sizes.map((s) =>
+        s.size === entry.size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) + delta * Number(entry.qty)) } : s
+      ),
+    };
+    delete updated.updated_at;
+    await saveProduct(updated);
+  }
+
   async function handleSubmit() {
     if (!selectedProduct) { toast('Select a product first.'); return; }
     if (!size) { toast('Select a size.'); return; }
@@ -27,6 +52,7 @@ export default function ProductionLog({ data, reload }) {
     const entry = {
       id: uid('log'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: q, status, remarks: remarks.trim(),
+      ready_date: status === 'Ready' ? todayStr() : null,
     };
     await addProductionLog(entry);
 
@@ -37,6 +63,24 @@ export default function ProductionLog({ data, reload }) {
     }
     toast(`Logged ${q} × ${selectedProduct.name} (${size}).`);
     setRemarks('');
+    reload();
+  }
+
+  async function handleStatusChange(entry, newStatus) {
+    const wasReady = entry.status === 'Ready';
+    const willBeReady = newStatus === 'Ready';
+    let readyDate = entry.ready_date;
+    if (willBeReady && !wasReady) readyDate = readyDate || todayStr(); // auto-fill the day it became Ready
+    if (!willBeReady && wasReady) readyDate = null; // no longer ready, clear it
+
+    await updateProductionLog({ ...entry, status: newStatus, ready_date: readyDate });
+    await adjustStockForStatusChange(entry, wasReady, willBeReady);
+    toast(`Status changed to ${newStatus}${willBeReady && !wasReady ? ' — stock updated' : !willBeReady && wasReady ? ' — stock reversed' : ''}.`);
+    reload();
+  }
+
+  async function handleReadyDateChange(entry, newDate) {
+    await updateProductionLog({ ...entry, ready_date: newDate || null });
     reload();
   }
 
@@ -78,7 +122,7 @@ export default function ProductionLog({ data, reload }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Production Log</h1>
-          <div className="page-sub">Log every batch — marking it "Ready" adds to finished-goods stock and deducts fabric automatically</div>
+          <div className="page-sub">Log every batch — change the status anytime, and Ready adds to finished-goods stock and deducts fabric automatically</div>
         </div>
       </div>
 
@@ -103,10 +147,10 @@ export default function ProductionLog({ data, reload }) {
           <div className="field">
             <label>Status</label>
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option>Pending</option><option>In Progress</option><option>Ready</option>
+              {STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
-          <div className="field"><label>Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div className="field"><label>Date logged</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
         </div>
         <div className="field">
           <label>Remarks (optional)</label>
@@ -118,19 +162,48 @@ export default function ProductionLog({ data, reload }) {
 
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Status</th><th>Remarks</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th>Date logged</th><th>Product</th><th>Size</th><th>Qty</th><th>Status</th>
+              <th>Ready date</th><th>Days to Ready</th><th>Remarks</th><th></th>
+            </tr>
+          </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={7} className="empty">No entries yet.</td></tr>
+              <tr><td colSpan={9} className="empty">No entries yet.</td></tr>
             ) : (
-              sorted.map((l) => (
-                <tr key={l.id}>
-                  <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
-                  <td><span className={`tag ${l.status === 'Ready' ? 'ready' : l.status === 'In Progress' ? 'progress' : 'pending'}`}>{l.status}</span></td>
-                  <td>{l.remarks || ''}</td>
-                  <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
-                </tr>
-              ))
+              sorted.map((l) => {
+                const days = daysBetween(l.date, l.ready_date);
+                return (
+                  <tr key={l.id}>
+                    <td>{l.date}</td>
+                    <td>{l.product_name}</td>
+                    <td>{l.size}</td>
+                    <td>{l.qty}</td>
+                    <td>
+                      <select
+                        value={l.status}
+                        onChange={(e) => handleStatusChange(l, e.target.value)}
+                        className={`tag ${l.status === 'Ready' ? 'ready' : l.status === 'In Progress' ? 'progress' : 'pending'}`}
+                        style={{ border: '1px solid var(--line)', cursor: 'pointer' }}
+                      >
+                        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        value={l.ready_date || ''}
+                        onChange={(e) => handleReadyDateChange(l, e.target.value)}
+                        style={{ width: 130, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      />
+                    </td>
+                    <td>{days != null ? `${days} day${days === 1 ? '' : 's'}` : '—'}</td>
+                    <td>{l.remarks || ''}</td>
+                    <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

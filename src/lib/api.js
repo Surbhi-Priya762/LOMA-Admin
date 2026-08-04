@@ -42,6 +42,10 @@ export async function addProductionLog(entry) {
   const { error } = await supabase.from('production_log').insert(entry);
   if (error) throw error;
 }
+export async function updateProductionLog(entry) {
+  const { error } = await supabase.from('production_log').upsert(entry);
+  if (error) throw error;
+}
 export async function deleteProductionLog(id) {
   const { error } = await supabase.from('production_log').delete().eq('id', id);
   if (error) throw error;
