@@ -1,15 +1,17 @@
 import { supabase } from './supabaseClient';
 
 export async function fetchAll() {
-  const [products, materials, productionLog, salesLog, settings, lastUpdate] = await Promise.all([
+  const [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward] = await Promise.all([
     supabase.from('products').select('*').order('name'),
     supabase.from('materials').select('*').order('category').order('name'),
     supabase.from('production_log').select('*').order('date', { ascending: false }),
     supabase.from('sales_log').select('*').order('date', { ascending: false }),
     supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
     supabase.from('last_update').select('*').eq('id', 1).maybeSingle(),
+    supabase.from('expenses').select('*').order('date', { ascending: false }),
+    supabase.from('inward').select('*').order('date', { ascending: false }),
   ]);
-  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate]) {
+  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward]) {
     if (r.error) throw r.error;
   }
   return {
@@ -19,6 +21,8 @@ export async function fetchAll() {
     salesLog: salesLog.data || [],
     settings: settings.data || { daily_labour_budget: null },
     lastUpdate: lastUpdate.data || null,
+    expenses: expenses.data || [],
+    inward: inward.data || [],
   };
 }
 
@@ -82,5 +86,29 @@ export async function backupAll() {
     salesLog: d.salesLog,
     settings: d.settings,
     lastUpdate: d.lastUpdate,
+    expenses: d.expenses,
+    inward: d.inward,
   };
+}
+
+export async function addExpense(entry) {
+  const { error } = await supabase.from('expenses').insert(entry);
+  if (error) throw error;
+}
+export async function updateExpense(entry) {
+  const { error } = await supabase.from('expenses').upsert(entry);
+  if (error) throw error;
+}
+export async function deleteExpense(id) {
+  const { error } = await supabase.from('expenses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function addInward(entry) {
+  const { error } = await supabase.from('inward').insert(entry);
+  if (error) throw error;
+}
+export async function deleteInward(id) {
+  const { error } = await supabase.from('inward').delete().eq('id', id);
+  if (error) throw error;
 }

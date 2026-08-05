@@ -1,28 +1,39 @@
 import { useState } from 'react';
 import { productTargetMRP, productProductionCost, productTotalStock, rupee } from '../lib/calc';
 import ProductModal from './ProductModal';
+import ProductViewModal from './ProductViewModal';
 
-export default function Products({ data, reload }) {
+export default function Products({ data, reload, role }) {
   const { products, materials, settings } = data;
+  const isViewer = role === 'viewer';
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState(undefined); // undefined = closed, null = new, id = edit
 
   const q = search.toLowerCase();
   const list = products.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q));
 
-  const openProduct = openId === undefined ? null : openId === null ? null : products.find((p) => p.id === openId);
+  const openProduct = openId === undefined || openId === null ? null : products.find((p) => p.id === openId);
 
   return (
     <div>
       <div className="topline">
         <div>
           <h1 className="page-title">Products</h1>
-          <div className="page-sub">{products.length} products — click any card to view or edit its full recipe &amp; costing</div>
+          <div className="page-sub">
+            {products.length} products{isViewer ? '' : ' — click any card to view or edit its full recipe & costing'}
+          </div>
         </div>
-        <div className="toolbar">
-          <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <button className="btn" onClick={() => setOpenId(null)}>+ Add product</button>
-        </div>
+        {!isViewer && (
+          <div className="toolbar">
+            <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <button className="btn" onClick={() => setOpenId(null)}>+ Add product</button>
+          </div>
+        )}
+        {isViewer && (
+          <div className="toolbar">
+            <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        )}
       </div>
 
       {list.length === 0 ? (
@@ -43,10 +54,12 @@ export default function Products({ data, reload }) {
                 <div className="prod-body">
                   <div className="prod-name">{p.name}</div>
                   <div className="prod-sku">{p.sku_prefix || '—'}</div>
-                  <div className="prod-price-row">
-                    <span className="prod-mrp">{mrp != null ? rupee(mrp) : '—'}</span>
-                    <span className={`prod-flag ${missing ? 'missing' : 'ready'}`}>{missing ? 'Incomplete' : 'Costed'}</span>
-                  </div>
+                  {!isViewer && (
+                    <div className="prod-price-row">
+                      <span className="prod-mrp">{mrp != null ? rupee(mrp) : '—'}</span>
+                      <span className={`prod-flag ${missing ? 'missing' : 'ready'}`}>{missing ? 'Incomplete' : 'Costed'}</span>
+                    </div>
+                  )}
                   <div className="mini-note">Stock: {stock} pcs</div>
                 </div>
               </div>
@@ -55,7 +68,11 @@ export default function Products({ data, reload }) {
         </div>
       )}
 
-      {openId !== undefined && (
+      {openId !== undefined && isViewer && openProduct && (
+        <ProductViewModal product={openProduct} onClose={() => setOpenId(undefined)} />
+      )}
+
+      {openId !== undefined && !isViewer && (
         <ProductModal
           product={openProduct}
           materials={materials}

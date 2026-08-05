@@ -94,6 +94,18 @@ export function formatTimestamp(ts) {
   return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
+// Effective gross/net for a sale row, falling back to price x qty for older entries
+// that predate the gross/net fields.
+export function saleGross(sale) {
+  if (sale.gross_amount != null && sale.gross_amount !== '') return Number(sale.gross_amount);
+  if (sale.price != null) return Number(sale.price) * (Number(sale.qty) || 1);
+  return null;
+}
+export function saleNet(sale) {
+  if (sale.net_amount != null && sale.net_amount !== '') return Number(sale.net_amount);
+  return saleGross(sale);
+}
+
 export function uid(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
