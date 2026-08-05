@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
 import { SIZES, CHANNELS, todayStr, rupee, uid, saleGross, saleNet } from '../lib/calc';
-import { addSale, deleteSale, saveProduct } from '../lib/api';
+import { addSale, deleteSale, saveProduct, saveChannelCommission } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-const COYU_KEEP_RATE = 0.6; // Coyu takes 40% commission, you keep 60%
+function computeNet(gross, commission) {
+  if (gross === '' || gross == null) return '';
+  const g = Number(gross);
+  if (!commission || commission.type === 'None' || commission.value == null) return g.toFixed(2);
+  if (commission.type === 'Percentage') return (g * (1 - Number(commission.value) / 100)).toFixed(2);
+  if (commission.type === 'Flat') return (g - Number(commission.value)).toFixed(2);
+  return g.toFixed(2);
+}
 
 export default function Sales({ data, reload }) {
   const { toast } = useUI();
-  const { products, salesLog } = data;
+  const { products, salesLog, commissions } = data;
   const [monthFilter, setMonthFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -19,6 +26,8 @@ export default function Sales({ data, reload }) {
   const [gross, setGross] = useState('');
   const [net, setNet] = useState('');
   const [date, setDate] = useState(todayStr());
+
+  const commissionFor = (ch) => (commissions || []).find((c) => c.channel === ch) || { channel: ch, type: 'None', value: null };
 
   const allMonths = Array.from(new Set(salesLog.map((l) => (l.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
@@ -40,16 +49,12 @@ export default function Sales({ data, reload }) {
     setProductId(id);
     setSize('');
     const p = products.find((x) => x.id === id);
-    if (p && p.selling_price != null) {
-      setGross(p.selling_price);
-    }
+    if (p && p.selling_price != null) setGross(p.selling_price);
   }
 
-  // Coyu: net auto-follows gross at a fixed 60% (40% commission). Other channels: you type both.
+  // Net auto-follows Gross using this channel's saved commission rule — type directly into Net to override.
   useEffect(() => {
-    if (channel === 'Coyu' && gross !== '') {
-      setNet((Number(gross) * COYU_KEEP_RATE).toFixed(2));
-    }
+    setNet(computeNet(gross, commissionFor(channel)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel, gross]);
 
@@ -64,7 +69,7 @@ export default function Sales({ data, reload }) {
       size, qty: q, channel,
       gross_amount: gross === '' ? null : Number(gross),
       net_amount: net === '' ? null : Number(net),
-      price: gross === '' ? null : Number(gross) / q, // keep legacy per-unit field populated too, for anything still reading it
+      price: gross === '' ? null : Number(gross) / q,
     };
     await addSale(entry);
     const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
@@ -87,12 +92,57 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
+  async function updateCommission(ch, field, value) {
+    const current = commissionFor(ch);
+    await saveChannelCommission({ ...current, [field]: value });
+    toast(`${ch} commission updated.`);
+    reload();
+  }
+
   return (
     <div>
       <div className="topline">
         <div>
           <h1 className="page-title">Sales</h1>
           <div className="page-sub">Log a sale to deduct finished-goods stock and track Gross &amp; Net revenue by channel</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
+        <p className="section-title">Commission settings, per channel</p>
+        <div className="mini-note" style={{ marginBottom: 10 }}>
+          Net calculates automatically from Gross using these — change anytime, applies to the next sale you log. You can still type Net directly for any one sale to override it.
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Channel</th><th>Type</th><th>Value</th></tr></thead>
+            <tbody>
+              {CHANNELS.map((ch) => {
+                const c = commissionFor(ch);
+                return (
+                  <tr key={ch}>
+                    <td>{ch}</td>
+                    <td>
+                      <select defaultValue={c.type} onChange={(e) => updateCommission(ch, 'type', e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}>
+                        <option value="None">None</option>
+                        <option value="Percentage">Percentage</option>
+                        <option value="Flat">Flat amount</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number" step="any" defaultValue={c.value ?? ''}
+                        placeholder={c.type === 'Percentage' ? 'e.g. 40' : c.type === 'Flat' ? 'e.g. 336' : '—'}
+                        disabled={c.type === 'None'}
+                        onBlur={(e) => updateCommission(ch, 'value', e.target.value === '' ? null : Number(e.target.value))}
+                        style={{ width: 100, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -147,13 +197,15 @@ export default function Sales({ data, reload }) {
             <input type="number" step="any" value={gross} onChange={(e) => setGross(e.target.value)} />
           </div>
           <div className="field">
-            <label>Net sale (Rs.){channel === 'Coyu' ? ' — auto (60% after commission)' : ''}</label>
-            <input type="number" step="any" value={net} onChange={(e) => setNet(e.target.value)} placeholder={channel === 'Myntra' ? 'from settlement, once known' : ''} />
+            <label>
+              Net sale (Rs.) — after commission
+              {commissionFor(channel).type === 'Percentage' && ` (auto: -${commissionFor(channel).value}%)`}
+              {commissionFor(channel).type === 'Flat' && ` (auto: -Rs.${commissionFor(channel).value})`}
+            </label>
+            <input type="number" step="any" value={net} onChange={(e) => setNet(e.target.value)} />
           </div>
         </div>
-        {channel === 'Myntra' && (
-          <div className="mini-note">Myntra's actual payout varies per order — enter Net once you know it from the settlement report, or leave blank and fill in later.</div>
-        )}
+        <div className="mini-note">Net fills in automatically from the commission settings above — edit it directly if this particular sale is different.</div>
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
