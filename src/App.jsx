@@ -12,6 +12,7 @@ import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
 import Inward from './pages/Inward';
 import StorePlanning from './pages/StorePlanning';
+import StockCheck from './pages/StockCheck';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '◆' },
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { id: 'sales', label: 'Sales', icon: '₹', adminOnly: true },
   { id: 'expenses', label: 'Expenses', icon: '§', adminOnly: true },
   { id: 'store', label: 'Store Planning', icon: '⬒', adminOnly: true },
+  { id: 'stockcheck', label: 'Stock Check', icon: '✓', adminOnly: true },
 ];
 
 function todayStr() {
@@ -114,6 +116,7 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'sales' && <Sales data={data} reload={reload} />}
             {!isViewer && route === 'expenses' && <Expenses data={data} reload={reload} />}
             {!isViewer && route === 'store' && <StorePlanning data={data} reload={reload} />}
+            {!isViewer && route === 'stockcheck' && <StockCheck data={data} />}
           </>
         )}
       </div>
