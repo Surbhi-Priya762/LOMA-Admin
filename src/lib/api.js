@@ -69,6 +69,10 @@ export async function addSale(entry) {
   const { error } = await supabase.from('sales_log').insert(entry);
   if (error) throw error;
 }
+export async function updateSale(entry) {
+  const { error } = await supabase.from('sales_log').upsert(entry);
+  if (error) throw error;
+}
 export async function deleteSale(id) {
   const { error } = await supabase.from('sales_log').delete().eq('id', id);
   if (error) throw error;

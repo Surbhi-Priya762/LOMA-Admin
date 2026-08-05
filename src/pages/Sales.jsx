@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { SIZES, CHANNELS, todayStr, rupee, uid, saleGross, saleNet } from '../lib/calc';
-import { addSale, deleteSale, saveProduct, saveChannelCommission } from '../lib/api';
+import { SIZES, CHANNELS, todayStr, rupee, fmt, uid, saleGross, saleNet } from '../lib/calc';
+import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 function computeNet(gross, commission) {
@@ -10,6 +10,24 @@ function computeNet(gross, commission) {
   if (commission.type === 'Percentage') return (g * (1 - Number(commission.value) / 100)).toFixed(2);
   if (commission.type === 'Flat') return (g - Number(commission.value)).toFixed(2);
   return g.toFixed(2);
+}
+
+function downloadCsv(rows, filename) {
+  const header = ['Date', 'Product', 'Size', 'Qty', 'Channel', 'Gross', 'Net'];
+  const lines = [header.join(',')];
+  rows.forEach((l) => {
+    const cells = [l.date, l.product_name, l.size, l.qty, l.channel, fmt(saleGross(l)) ?? '', fmt(saleNet(l)) ?? ''];
+    lines.push(cells.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function Sales({ data, reload }) {
@@ -52,7 +70,6 @@ export default function Sales({ data, reload }) {
     if (p && p.selling_price != null) setGross(p.selling_price);
   }
 
-  // Net auto-follows Gross using this channel's saved commission rule — type directly into Net to override.
   useEffect(() => {
     setNet(computeNet(gross, commissionFor(channel)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,6 +116,26 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
+  // edit an existing, already-saved sale's Gross/Net directly — no delete-and-redo needed
+  async function editSaleField(entry, field, value) {
+    const num = value === '' ? null : Number(value);
+    await updateSale({ ...entry, [field]: num });
+    reload();
+  }
+
+  async function recalcNet(entry) {
+    const g = saleGross(entry);
+    const newNet = computeNet(g ?? '', commissionFor(entry.channel));
+    await updateSale({ ...entry, net_amount: newNet === '' ? null : Number(newNet) });
+    toast('Net recalculated from current commission settings.');
+    reload();
+  }
+
+  function handleExport() {
+    downloadCsv(sorted, `loma-sales-${todayStr()}.csv`);
+    toast('Sales exported — opens directly in Excel.');
+  }
+
   return (
     <div>
       <div className="topline">
@@ -106,12 +143,15 @@ export default function Sales({ data, reload }) {
           <h1 className="page-title">Sales</h1>
           <div className="page-sub">Log a sale to deduct finished-goods stock and track Gross &amp; Net revenue by channel</div>
         </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
         <p className="section-title">Commission settings, per channel</p>
         <div className="mini-note" style={{ marginBottom: 10 }}>
-          Net calculates automatically from Gross using these — change anytime, applies to the next sale you log. You can still type Net directly for any one sale to override it.
+          Net calculates automatically from Gross using these when you log a new sale. To fix an old sale, edit it directly in the table below instead.
         </div>
         <div className="table-wrap">
           <table className="data-table">
@@ -205,7 +245,6 @@ export default function Sales({ data, reload }) {
             <input type="number" step="any" value={net} onChange={(e) => setNet(e.target.value)} />
           </div>
         </div>
-        <div className="mini-note">Net fills in automatically from the commission settings above — edit it directly if this particular sale is different.</div>
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
@@ -216,6 +255,9 @@ export default function Sales({ data, reload }) {
         </div>
       </div>
 
+      <div className="mini-note" style={{ marginBottom: 8 }}>
+        Gross and Net are editable directly in the table — click into either, type the real number, and click away to save. No need to delete and re-log a sale just to fix an amount.
+      </div>
       <div className="table-wrap">
         <table className="data-table">
           <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Channel</th><th>Gross</th><th>Net</th><th></th></tr></thead>
@@ -226,8 +268,25 @@ export default function Sales({ data, reload }) {
               sorted.map((l) => (
                 <tr key={l.id}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
-                  <td>{l.channel}</td><td>{rupee(saleGross(l))}</td><td>{rupee(saleNet(l))}</td>
-                  <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
+                  <td>{l.channel}</td>
+                  <td>
+                    <input
+                      type="number" step="any" defaultValue={saleGross(l) ?? ''}
+                      onBlur={(e) => editSaleField(l, 'gross_amount', e.target.value)}
+                      style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number" step="any" defaultValue={saleNet(l) ?? ''}
+                      onBlur={(e) => editSaleField(l, 'net_amount', e.target.value)}
+                      style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn secondary small" onClick={() => recalcNet(l)}>Recalc</button>
+                    <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                  </td>
                 </tr>
               ))
             )}
