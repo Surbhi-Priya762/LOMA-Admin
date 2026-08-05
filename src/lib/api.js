@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 
 export async function fetchAll() {
-  const [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward] = await Promise.all([
+  const [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras] = await Promise.all([
     supabase.from('products').select('*').order('name'),
     supabase.from('materials').select('*').order('category').order('name'),
     supabase.from('production_log').select('*').order('date', { ascending: false }),
@@ -10,8 +10,9 @@ export async function fetchAll() {
     supabase.from('last_update').select('*').eq('id', 1).maybeSingle(),
     supabase.from('expenses').select('*').order('date', { ascending: false }),
     supabase.from('inward').select('*').order('date', { ascending: false }),
+    supabase.from('store_plan_extras').select('*').order('created_at'),
   ]);
-  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward]) {
+  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras]) {
     if (r.error) throw r.error;
   }
   return {
@@ -23,6 +24,7 @@ export async function fetchAll() {
     lastUpdate: lastUpdate.data || null,
     expenses: expenses.data || [],
     inward: inward.data || [],
+    storePlanExtras: storePlanExtras.data || [],
   };
 }
 
@@ -75,7 +77,7 @@ export async function recordLastUpdate(name, what) {
   return entry;
 }
 
-// Pulls all 6 tables fresh from Supabase for a one-click backup download.
+// Pulls all tables fresh from Supabase for a one-click backup download.
 export async function backupAll() {
   const d = await fetchAll();
   return {
@@ -88,7 +90,17 @@ export async function backupAll() {
     lastUpdate: d.lastUpdate,
     expenses: d.expenses,
     inward: d.inward,
+    storePlanExtras: d.storePlanExtras,
   };
+}
+
+export async function addStorePlanExtra(entry) {
+  const { error } = await supabase.from('store_plan_extras').insert(entry);
+  if (error) throw error;
+}
+export async function deleteStorePlanExtra(id) {
+  const { error } = await supabase.from('store_plan_extras').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function addExpense(entry) {

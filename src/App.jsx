@@ -113,7 +113,7 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'inward' && <Inward data={data} reload={reload} />}
             {!isViewer && route === 'sales' && <Sales data={data} reload={reload} />}
             {!isViewer && route === 'expenses' && <Expenses data={data} reload={reload} />}
-            {!isViewer && route === 'store' && <StorePlanning data={data} />}
+            {!isViewer && route === 'store' && <StorePlanning data={data} reload={reload} />}
           </>
         )}
       </div>

@@ -3,7 +3,7 @@ import { todayStr, rupee, uid } from '../lib/calc';
 import { addExpense, deleteExpense } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-const BRANDS = ['Sauca', 'Loma'];
+const COMPANY = 'Sauca Design LLP';
 const CATEGORIES = [
   'Marketing & Ads', 'Vendor/Production & Fabric', 'Logistics & Shipping', 'Software & Subscriptions',
   'Marketplace Fees & Commission', 'Office & Admin', 'Travel & Reimbursement', 'Professional/Contractor Fees',
@@ -18,7 +18,7 @@ export default function Expenses({ data, reload }) {
   const [search, setSearch] = useState('');
 
   const [date, setDate] = useState(todayStr());
-  const [brand, setBrand] = useState('Sauca');
+  const brand = COMPANY;
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
@@ -89,12 +89,9 @@ export default function Expenses({ data, reload }) {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <p className="section-title">Log an expense</p>
+        <div className="mini-note" style={{ marginBottom: 10 }}>Recorded under {COMPANY}.</div>
         <div className="field-row">
           <div className="field"><label>Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-          <div className="field">
-            <label>Brand</label>
-            <select value={brand} onChange={(e) => setBrand(e.target.value)}>{BRANDS.map((b) => <option key={b}>{b}</option>)}</select>
-          </div>
           <div className="field">
             <label>Category</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
