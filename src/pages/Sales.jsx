@@ -1,22 +1,13 @@
 import { useEffect, useState } from 'react';
-import { SIZES, CHANNELS, todayStr, rupee, fmt, uid, saleGross, saleNet } from '../lib/calc';
+import { SIZES, CHANNELS, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission } from '../lib/calc';
 import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-function computeNet(gross, commission) {
-  if (gross === '' || gross == null) return '';
-  const g = Number(gross);
-  if (!commission || commission.type === 'None' || commission.value == null) return g.toFixed(2);
-  if (commission.type === 'Percentage') return (g * (1 - Number(commission.value) / 100)).toFixed(2);
-  if (commission.type === 'Flat') return (g - Number(commission.value)).toFixed(2);
-  return g.toFixed(2);
-}
-
 function downloadCsv(rows, filename) {
-  const header = ['Date', 'Product', 'Size', 'Qty', 'Channel', 'Gross', 'Net'];
+  const header = ['Date', 'Product', 'Size', 'Qty', 'Channel', 'Commission Type', 'Commission Value', 'Gross', 'Net'];
   const lines = [header.join(',')];
   rows.forEach((l) => {
-    const cells = [l.date, l.product_name, l.size, l.qty, l.channel, fmt(saleGross(l)) ?? '', fmt(saleNet(l)) ?? ''];
+    const cells = [l.date, l.product_name, l.size, l.qty, l.channel, l.commission_type || '', l.commission_value ?? '', fmt(saleGross(l)) ?? '', fmt(saleNet(l)) ?? ''];
     lines.push(cells.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','));
   });
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -43,9 +34,11 @@ export default function Sales({ data, reload }) {
   const [channel, setChannel] = useState(CHANNELS[0]);
   const [gross, setGross] = useState('');
   const [net, setNet] = useState('');
+  const [commType, setCommType] = useState('None');
+  const [commValue, setCommValue] = useState('');
   const [date, setDate] = useState(todayStr());
 
-  const commissionFor = (ch) => (commissions || []).find((c) => c.channel === ch) || { channel: ch, type: 'None', value: null };
+  const channelDefault = (ch) => (commissions || []).find((c) => c.channel === ch) || { channel: ch, type: 'None', value: null };
 
   const allMonths = Array.from(new Set(salesLog.map((l) => (l.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
@@ -70,10 +63,19 @@ export default function Sales({ data, reload }) {
     if (p && p.selling_price != null) setGross(p.selling_price);
   }
 
+  // When channel changes, load that channel's default commission into the per-sale boxes — still fully editable before you log it.
+  function selectChannel(ch) {
+    setChannel(ch);
+    const def = channelDefault(ch);
+    setCommType(def.type || 'None');
+    setCommValue(def.value ?? '');
+  }
+
+  // Net always follows Gross + this sale's own commission box — type/value here, not just the channel default.
   useEffect(() => {
-    setNet(computeNet(gross, commissionFor(channel)));
+    setNet(applyCommission(gross, { type: commType, value: commValue }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel, gross]);
+  }, [gross, commType, commValue]);
 
   async function handleSubmit() {
     if (!selectedProduct) { toast('Select a product first.'); return; }
@@ -84,6 +86,7 @@ export default function Sales({ data, reload }) {
     const entry = {
       id: uid('sale'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: q, channel,
+      commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
       gross_amount: gross === '' ? null : Number(gross),
       net_amount: net === '' ? null : Number(net),
       price: gross === '' ? null : Number(gross) / q,
@@ -109,25 +112,31 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
-  async function updateCommission(ch, field, value) {
-    const current = commissionFor(ch);
+  async function updateChannelDefault(ch, field, value) {
+    const current = channelDefault(ch);
     await saveChannelCommission({ ...current, [field]: value });
-    toast(`${ch} commission updated.`);
+    toast(`${ch} default commission updated.`);
     reload();
   }
 
-  // edit an existing, already-saved sale's Gross/Net directly — no delete-and-redo needed
-  async function editSaleField(entry, field, value) {
+  // edit an existing sale's own commission box — recalculates and saves its Net immediately
+  async function editSaleCommission(entry, field, value) {
+    const updatedEntry = { ...entry, [field]: field === 'commission_value' ? (value === '' ? null : Number(value)) : value };
+    const newNet = applyCommission(saleGross(updatedEntry) ?? '', { type: updatedEntry.commission_type, value: updatedEntry.commission_value });
+    await updateSale({ ...updatedEntry, net_amount: newNet === '' ? null : Number(newNet) });
+    toast('Commission updated, Net recalculated.');
+    reload();
+  }
+
+  // still allow typing Gross or Net directly for a saved sale
+  async function editSaleAmount(entry, field, value) {
     const num = value === '' ? null : Number(value);
-    await updateSale({ ...entry, [field]: num });
-    reload();
-  }
-
-  async function recalcNet(entry) {
-    const g = saleGross(entry);
-    const newNet = computeNet(g ?? '', commissionFor(entry.channel));
-    await updateSale({ ...entry, net_amount: newNet === '' ? null : Number(newNet) });
-    toast('Net recalculated from current commission settings.');
+    if (field === 'gross_amount') {
+      const newNet = applyCommission(num ?? '', { type: entry.commission_type, value: entry.commission_value });
+      await updateSale({ ...entry, gross_amount: num, net_amount: newNet === '' ? null : Number(newNet) });
+    } else {
+      await updateSale({ ...entry, [field]: num });
+    }
     reload();
   }
 
@@ -149,21 +158,21 @@ export default function Sales({ data, reload }) {
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
-        <p className="section-title">Commission settings, per channel</p>
+        <p className="section-title">Default commission, per channel</p>
         <div className="mini-note" style={{ marginBottom: 10 }}>
-          Net calculates automatically from Gross using these when you log a new sale. To fix an old sale, edit it directly in the table below instead.
+          This is just the starting point that fills in when you pick a channel below — every sale has its own commission box you can still change per order.
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Channel</th><th>Type</th><th>Value</th></tr></thead>
             <tbody>
               {CHANNELS.map((ch) => {
-                const c = commissionFor(ch);
+                const c = channelDefault(ch);
                 return (
                   <tr key={ch}>
                     <td>{ch}</td>
                     <td>
-                      <select defaultValue={c.type} onChange={(e) => updateCommission(ch, 'type', e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}>
+                      <select defaultValue={c.type} onChange={(e) => updateChannelDefault(ch, 'type', e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}>
                         <option value="None">None</option>
                         <option value="Percentage">Percentage</option>
                         <option value="Flat">Flat amount</option>
@@ -174,7 +183,7 @@ export default function Sales({ data, reload }) {
                         type="number" step="any" defaultValue={c.value ?? ''}
                         placeholder={c.type === 'Percentage' ? 'e.g. 40' : c.type === 'Flat' ? 'e.g. 336' : '—'}
                         disabled={c.type === 'None'}
-                        onBlur={(e) => updateCommission(ch, 'value', e.target.value === '' ? null : Number(e.target.value))}
+                        onBlur={(e) => updateChannelDefault(ch, 'value', e.target.value === '' ? null : Number(e.target.value))}
                         style={{ width: 100, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                       />
                     </td>
@@ -225,7 +234,7 @@ export default function Sales({ data, reload }) {
           <div className="field"><label>Qty</label><input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
           <div className="field">
             <label>Channel</label>
-            <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <select value={channel} onChange={(e) => selectChannel(e.target.value)}>
               {CHANNELS.map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
@@ -237,14 +246,23 @@ export default function Sales({ data, reload }) {
             <input type="number" step="any" value={gross} onChange={(e) => setGross(e.target.value)} />
           </div>
           <div className="field">
-            <label>
-              Net sale (Rs.) — after commission
-              {commissionFor(channel).type === 'Percentage' && ` (auto: -${commissionFor(channel).value}%)`}
-              {commissionFor(channel).type === 'Flat' && ` (auto: -Rs.${commissionFor(channel).value})`}
-            </label>
+            <label>Commission type</label>
+            <select value={commType} onChange={(e) => setCommType(e.target.value)}>
+              <option value="None">None</option>
+              <option value="Percentage">Percentage off</option>
+              <option value="Flat">Flat amount off</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Commission value{commType === 'Percentage' ? ' (%)' : commType === 'Flat' ? ' (Rs.)' : ''}</label>
+            <input type="number" step="any" value={commValue} onChange={(e) => setCommValue(e.target.value)} disabled={commType === 'None'} />
+          </div>
+          <div className="field">
+            <label>Net sale (Rs.) — calculated</label>
             <input type="number" step="any" value={net} onChange={(e) => setNet(e.target.value)} />
           </div>
         </div>
+        <div className="mini-note">Net updates instantly from Gross and the commission box — you can still type over it directly if needed.</div>
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
@@ -256,37 +274,53 @@ export default function Sales({ data, reload }) {
       </div>
 
       <div className="mini-note" style={{ marginBottom: 8 }}>
-        Gross and Net are editable directly in the table — click into either, type the real number, and click away to save. No need to delete and re-log a sale just to fix an amount.
+        Every sale has its own Commission box below — change the type or value and Net recalculates and saves right away. Gross and Net can also be typed over directly.
       </div>
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Channel</th><th>Gross</th><th>Net</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th></th></tr></thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={8} className="empty">No sales match your filters.</td></tr>
+              <tr><td colSpan={9} className="empty">No sales match your filters.</td></tr>
             ) : (
               sorted.map((l) => (
                 <tr key={l.id}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
                   <td>{l.channel}</td>
                   <td>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <select
+                        defaultValue={l.commission_type || 'None'}
+                        onChange={(e) => editSaleCommission(l, 'commission_type', e.target.value)}
+                        style={{ padding: '4px 4px', border: '1px solid var(--line)', borderRadius: 2, fontSize: 11 }}
+                      >
+                        <option value="None">None</option>
+                        <option value="Percentage">%</option>
+                        <option value="Flat">Flat</option>
+                      </select>
+                      <input
+                        type="number" step="any" defaultValue={l.commission_value ?? ''}
+                        onBlur={(e) => editSaleCommission(l, 'commission_value', e.target.value)}
+                        disabled={(l.commission_type || 'None') === 'None'}
+                        style={{ width: 60, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      />
+                    </div>
+                  </td>
+                  <td>
                     <input
                       type="number" step="any" defaultValue={saleGross(l) ?? ''}
-                      onBlur={(e) => editSaleField(l, 'gross_amount', e.target.value)}
-                      style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      onBlur={(e) => editSaleAmount(l, 'gross_amount', e.target.value)}
+                      style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                     />
                   </td>
                   <td>
                     <input
                       type="number" step="any" defaultValue={saleNet(l) ?? ''}
-                      onBlur={(e) => editSaleField(l, 'net_amount', e.target.value)}
-                      style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      onBlur={(e) => editSaleAmount(l, 'net_amount', e.target.value)}
+                      style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                     />
                   </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn secondary small" onClick={() => recalcNet(l)}>Recalc</button>
-                    <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
-                  </td>
+                  <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
                 </tr>
               ))
             )}
@@ -294,7 +328,7 @@ export default function Sales({ data, reload }) {
           {sorted.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={3}>Total ({sorted.length} sale{sorted.length === 1 ? '' : 's'} shown)</td>
+                <td colSpan={4}>Total ({sorted.length} sale{sorted.length === 1 ? '' : 's'} shown)</td>
                 <td>{totalUnits}</td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td>
               </tr>
             </tfoot>

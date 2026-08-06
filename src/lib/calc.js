@@ -106,6 +106,17 @@ export function saleNet(sale) {
   return saleGross(sale);
 }
 
+// Applies a commission (Percentage or Flat, or None) to a gross amount to get the net.
+// commission = { type: 'Percentage'|'Flat'|'None', value: number|null }
+export function applyCommission(gross, commission) {
+  if (gross === '' || gross == null) return '';
+  const g = Number(gross);
+  if (!commission || commission.type === 'None' || commission.value == null || commission.value === '') return g.toFixed(2);
+  if (commission.type === 'Percentage') return (g * (1 - Number(commission.value) / 100)).toFixed(2);
+  if (commission.type === 'Flat') return (g - Number(commission.value)).toFixed(2);
+  return g.toFixed(2);
+}
+
 export function uid(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
