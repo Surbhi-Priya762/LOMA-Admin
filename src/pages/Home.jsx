@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { rupee, todayStr, formatTimestamp, productProductionCost, materialTotalIssued, saleGross, saleNet } from '../lib/calc';
+import { rupee, todayStr, formatTimestamp, productProductionCost, materialTotalIssued, saleGross, saleNet, saleTypeForChannel } from '../lib/calc';
 import { updateSettings, recordLastUpdate } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -19,6 +19,12 @@ export default function Home({ data, setRoute, reload, role }) {
   const monthUnits = monthSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
   const monthGross = monthSales.reduce((a, l) => a + (saleGross(l) || 0), 0);
   const monthNet = monthSales.reduce((a, l) => a + (saleNet(l) || 0), 0);
+  const monthOnlineNet = monthSales
+    .filter((l) => (l.sale_type || saleTypeForChannel(l.channel)) === 'Online')
+    .reduce((a, l) => a + (saleNet(l) || 0), 0);
+  const monthOfflineNet = monthSales
+    .filter((l) => (l.sale_type || saleTypeForChannel(l.channel)) === 'Offline')
+    .reduce((a, l) => a + (saleNet(l) || 0), 0);
 
   const monthExpenses = (expenses || []).filter((e) => (e.date || '').slice(0, 7) === thisMonth);
   const monthExpenseTotal = monthExpenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
@@ -120,6 +126,8 @@ export default function Home({ data, setRoute, reload, role }) {
         <Stat num={monthUnits} label={`Units sold this month (${thisMonth})`} />
         {role !== 'viewer' && <Stat num={rupee(monthGross)} label="Gross sale this month" />}
         {role !== 'viewer' && <Stat num={rupee(monthNet)} label="Net sale this month" />}
+        {role !== 'viewer' && <Stat num={rupee(monthOnlineNet)} label="Online sales this month (Myntra, Nykaa, Shopify, Other)" />}
+        {role !== 'viewer' && <Stat num={rupee(monthOfflineNet)} label="Offline sales this month (Coyu Store, Popup, Our Store)" />}
         {role !== 'viewer' && <Stat num={rupee(monthExpenseTotal)} label="Expenses this month" />}
         <Stat num={reorderCount} label="Materials to reorder" flag={reorderCount > 0 ? 'Check Stock page' : null} />
         {role !== 'viewer' && <Stat num={missingCost} label="Products missing cost data" flag={missingCost > 0 ? 'Fill in Products page' : null} />}
