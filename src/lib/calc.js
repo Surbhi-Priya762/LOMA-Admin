@@ -1,5 +1,15 @@
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-export const CHANNELS = ['Myntra', 'Coyu', 'Nykaa', 'Shopify', 'Popup', 'Other'];
+export const SALE_TYPES = ['Online', 'Offline'];
+export const CHANNELS_BY_TYPE = {
+  Online: ['Myntra', 'Nykaa', 'Shopify', 'Other'],
+  Offline: ['Coyu Store', 'Our Store', 'Popup Sale'],
+};
+export const CHANNELS = [...CHANNELS_BY_TYPE.Online, ...CHANNELS_BY_TYPE.Offline];
+export function saleTypeForChannel(channel) {
+  if (CHANNELS_BY_TYPE.Online.includes(channel)) return 'Online';
+  if (CHANNELS_BY_TYPE.Offline.includes(channel)) return 'Offline';
+  return null;
+}
 export const CATS = ['Fabric', 'Button', 'Thread', 'Fusing', 'Zip', 'Hook', 'Elastic', 'Lining'];
 export const CAT_KEYS = CATS.map((c) => c.toLowerCase());
 export const CAT_UNITS = { Fabric: 'm', Button: 'pcs', Thread: 'cones', Fusing: 'm', Zip: 'pcs', Hook: 'pcs', Elastic: 'm', Lining: 'm' };
