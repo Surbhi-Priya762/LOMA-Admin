@@ -9,25 +9,44 @@ export default function Home({ data, setRoute, reload, role }) {
   const [budgetInput, setBudgetInput] = useState(settings.daily_labour_budget ?? '');
 
   const today = todayStr();
-  const thisMonth = today.slice(0, 7);
+  const currentMonth = today.slice(0, 7);
+  const [filterMode, setFilterMode] = useState('month'); // 'month' | 'date'
+  const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [filterDate, setFilterDate] = useState(today);
+
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    [...productionLog, ...salesLog, ...(expenses || [])].forEach((r) => {
+      if (r.date) set.add(r.date.slice(0, 7));
+    });
+    set.add(currentMonth);
+    return Array.from(set).sort().reverse();
+  }, [productionLog, salesLog, expenses, currentMonth]);
+
+  function matchesPeriod(dateStr) {
+    if (!dateStr) return false;
+    if (filterMode === 'date') return dateStr === filterDate;
+    return dateStr.slice(0, 7) === filterMonth;
+  }
+  const periodLabel = filterMode === 'date' ? filterDate : filterMonth;
 
   const totalFabrics = materials.filter((m) => m.category === 'Fabric').length;
-  const todaysProd = productionLog.filter((l) => l.date === today).reduce((a, l) => a + (Number(l.qty) || 0), 0);
-  const todaysSales = salesLog.filter((l) => l.date === today);
-  const todaysRevenue = todaysSales.reduce((a, l) => a + (saleNet(l) || 0), 0);
-  const monthSales = salesLog.filter((l) => (l.date || '').slice(0, 7) === thisMonth);
-  const monthUnits = monthSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
-  const monthGross = monthSales.reduce((a, l) => a + (saleGross(l) || 0), 0);
-  const monthNet = monthSales.reduce((a, l) => a + (saleNet(l) || 0), 0);
-  const monthOnlineNet = monthSales
+
+  const periodProd = productionLog.filter((l) => matchesPeriod(l.date)).reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const periodSales = salesLog.filter((l) => matchesPeriod(l.date));
+  const periodUnits = periodSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const periodGross = periodSales.reduce((a, l) => a + (saleGross(l) || 0), 0);
+  const periodNet = periodSales.reduce((a, l) => a + (saleNet(l) || 0), 0);
+  const periodOnlineNet = periodSales
     .filter((l) => (l.sale_type || saleTypeForChannel(l.channel)) === 'Online')
     .reduce((a, l) => a + (saleNet(l) || 0), 0);
-  const monthOfflineNet = monthSales
+  const periodOfflineNet = periodSales
     .filter((l) => (l.sale_type || saleTypeForChannel(l.channel)) === 'Offline')
     .reduce((a, l) => a + (saleNet(l) || 0), 0);
 
-  const monthExpenses = (expenses || []).filter((e) => (e.date || '').slice(0, 7) === thisMonth);
-  const monthExpenseTotal = monthExpenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+  const periodExpenses = (expenses || []).filter((e) => matchesPeriod(e.date));
+  const periodExpenseTotal = periodExpenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+
   const lastExpense = [...(expenses || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
   const daysSinceExpense = lastExpense ? Math.round((new Date(today) - new Date(lastExpense.date)) / 86400000) : null;
   const expenseStale = daysSinceExpense == null || daysSinceExpense >= 2;
@@ -66,6 +85,35 @@ export default function Home({ data, setRoute, reload, role }) {
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
+        <p className="section-title">Dashboard period</p>
+        <div className="mini-note" style={{ marginBottom: 10 }}>All the numbers below (except Products/Fabrics/reorder counts) follow this — pick a month, or an exact date.</div>
+        <div className="tabs-row">
+          {availableMonths.map((m) => (
+            <div
+              key={m}
+              className={`pill ${filterMode === 'month' && filterMonth === m ? 'active' : ''}`}
+              onClick={() => { setFilterMode('month'); setFilterMonth(m); }}
+            >
+              {m}
+            </div>
+          ))}
+        </div>
+        <div className="field-row" style={{ maxWidth: 260, alignItems: 'flex-end' }}>
+          <div className="field">
+            <label>Or an exact date</label>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => { setFilterDate(e.target.value); setFilterMode('date'); }}
+            />
+          </div>
+          {filterMode === 'date' && (
+            <button className="btn secondary small" onClick={() => setFilterMode('month')}>Back to month view</button>
+          )}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 18 }}>
         <p className="section-title">Last updated</p>
         {lastUpdate ? (
           <div style={{ fontSize: 13.5 }}>
@@ -92,7 +140,7 @@ export default function Home({ data, setRoute, reload, role }) {
               <span style={{ color: 'var(--rust)' }}>No expenses logged yet.</span>
             )}
           </div>
-          <div className="mini-note" style={{ marginTop: 4 }}>This month so far: {rupee(monthExpenseTotal)} across {monthExpenses.length} entries.</div>
+          <div className="mini-note" style={{ marginTop: 4 }}>For {periodLabel}: {rupee(periodExpenseTotal)} across {periodExpenses.length} entries.</div>
           <div style={{ marginTop: 8 }}>
             <button className="link-btn" onClick={() => setRoute('expenses')}>Go to Expenses →</button>
           </div>
@@ -121,14 +169,13 @@ export default function Home({ data, setRoute, reload, role }) {
       <div className="grid-cards">
         <Stat num={products.length} label="Products" />
         <Stat num={totalFabrics} label="Fabrics tracked" />
-        <Stat num={todaysProd} label="Pieces logged today" />
-        {role !== 'viewer' && <Stat num={rupee(todaysRevenue)} label="Net revenue today" />}
-        <Stat num={monthUnits} label={`Units sold this month (${thisMonth})`} />
-        {role !== 'viewer' && <Stat num={rupee(monthGross)} label="Gross sale this month" />}
-        {role !== 'viewer' && <Stat num={rupee(monthNet)} label="Net sale this month" />}
-        {role !== 'viewer' && <Stat num={rupee(monthOnlineNet)} label="Online sales this month (Myntra, Nykaa, Shopify, Other)" />}
-        {role !== 'viewer' && <Stat num={rupee(monthOfflineNet)} label="Offline sales this month (Coyu Store, Popup, Our Store)" />}
-        {role !== 'viewer' && <Stat num={rupee(monthExpenseTotal)} label="Expenses this month" />}
+        <Stat num={periodProd} label={`Pieces logged — ${periodLabel}`} />
+        <Stat num={periodUnits} label={`Units sold — ${periodLabel}`} />
+        {role !== 'viewer' && <Stat num={rupee(periodGross)} label={`Gross sale — ${periodLabel}`} />}
+        {role !== 'viewer' && <Stat num={rupee(periodNet)} label={`Net sale — ${periodLabel}`} />}
+        {role !== 'viewer' && <Stat num={rupee(periodOnlineNet)} label="Online sales (Myntra, Nykaa, Shopify, Other)" />}
+        {role !== 'viewer' && <Stat num={rupee(periodOfflineNet)} label="Offline sales (Coyu Store, Popup, Our Store)" />}
+        {role !== 'viewer' && <Stat num={rupee(periodExpenseTotal)} label={`Expenses — ${periodLabel}`} />}
         <Stat num={reorderCount} label="Materials to reorder" flag={reorderCount > 0 ? 'Check Stock page' : null} />
         {role !== 'viewer' && <Stat num={missingCost} label="Products missing cost data" flag={missingCost > 0 ? 'Fill in Products page' : null} />}
       </div>
