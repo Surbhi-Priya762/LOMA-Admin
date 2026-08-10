@@ -5,7 +5,7 @@ import { useUI } from '../context/UIContext';
 
 export default function Home({ data, setRoute, reload, role }) {
   const { toast, promptName } = useUI();
-  const { products, materials, productionLog, salesLog, settings, lastUpdate, expenses } = data;
+  const { products, materials, productionLog, salesLog, settings, lastUpdate, expenses, settlements } = data;
   const [budgetInput, setBudgetInput] = useState(settings.daily_labour_budget ?? '');
 
   const today = todayStr();
@@ -46,6 +46,14 @@ export default function Home({ data, setRoute, reload, role }) {
 
   const periodExpenses = (expenses || []).filter((e) => matchesPeriod(e.date));
   const periodExpenseTotal = periodExpenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+
+  const activeSettlements = (settlements || []).filter((s) => (s.status || 'Pending') !== 'Cancelled');
+  const settledList = activeSettlements.filter((s) => s.status === 'Settled');
+  const settledCount = settledList.length;
+  const settledTotal = settledList.reduce((a, s) => a + (Number(s.received_amount) || 0), 0);
+  const pendingList = activeSettlements.filter((s) => (s.status || 'Pending') !== 'Settled');
+  const pendingCount = pendingList.length;
+  const pendingTotal = pendingList.reduce((a, s) => a + ((Number(s.expected_amount) || 0) - (Number(s.received_amount) || 0)), 0);
 
   const lastExpense = [...(expenses || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
   const daysSinceExpense = lastExpense ? Math.round((new Date(today) - new Date(lastExpense.date)) / 86400000) : null;
@@ -143,6 +151,21 @@ export default function Home({ data, setRoute, reload, role }) {
           <div className="mini-note" style={{ marginTop: 4 }}>For {periodLabel}: {rupee(periodExpenseTotal)} across {periodExpenses.length} entries.</div>
           <div style={{ marginTop: 8 }}>
             <button className="link-btn" onClick={() => setRoute('expenses')}>Go to Expenses →</button>
+          </div>
+        </div>
+      )}
+
+      {role !== 'viewer' && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <p className="section-title">Settlements — overall, right now</p>
+          <div className="grid-cards" style={{ marginBottom: 0, gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))' }}>
+            <Stat num={settledCount} label="Payments settled" />
+            <Stat num={rupee(settledTotal)} label="Total received" />
+            <Stat num={pendingCount} label="Payments pending" />
+            <Stat num={rupee(pendingTotal)} label="Still to receive" />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <button className="link-btn" onClick={() => setRoute('settlements')}>Go to Settlements →</button>
           </div>
         </div>
       )}

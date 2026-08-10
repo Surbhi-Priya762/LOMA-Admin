@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission } from '../lib/calc';
-import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission } from '../lib/api';
+import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 function downloadCsv(rows, filename) {
@@ -92,18 +92,34 @@ export default function Sales({ data, reload }) {
     const q = Number(qty) || 0;
     if (q <= 0) { toast('Enter a quantity.'); return; }
 
+    const grossNum = gross === '' ? null : Number(gross);
+    const netNum = net === '' ? null : Number(net);
     const entry = {
       id: uid('sale'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: q, channel, sale_type: saleType,
       commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
-      gross_amount: gross === '' ? null : Number(gross),
-      net_amount: net === '' ? null : Number(net),
+      gross_amount: grossNum,
+      net_amount: netNum,
       price: gross === '' ? null : Number(gross) / q,
     };
     await addSale(entry);
     const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
     delete updated.updated_at;
     await saveProduct(updated);
+
+    // Every sale gets a matching settlement row, tracked on the marketplace's own payment
+    // cycle — cash channels are already "Settled", marketplaces start "Pending".
+    const instantChannels = ['Our Store', 'Popup Sale'];
+    const isInstant = instantChannels.includes(channel);
+    await addSettlement({
+      id: uid('settle'), sale_id: entry.id, date_logged: date,
+      product_name: selectedProduct.name, size, channel,
+      gross_amount: grossNum, commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
+      expected_amount: netNum, received_amount: isInstant ? netNum : null,
+      status: isInstant ? 'Settled' : 'Pending',
+      settlement_date: isInstant ? date : null, notes: '',
+    });
+
     toast('Sale logged.');
     setGross(''); setNet('');
     reload();
@@ -116,6 +132,7 @@ export default function Sales({ data, reload }) {
       delete updated.updated_at;
       await saveProduct(updated);
     }
+    await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
     toast('Sale undone, stock restored.');
     reload();

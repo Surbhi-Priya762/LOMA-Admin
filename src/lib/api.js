@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 
 export async function fetchAll() {
-  const [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward] = await Promise.all([
+  const [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward, settlements] = await Promise.all([
     supabase.from('products').select('*').order('name'),
     supabase.from('materials').select('*').order('category').order('name'),
     supabase.from('production_log').select('*').order('date', { ascending: false }),
@@ -13,8 +13,9 @@ export async function fetchAll() {
     supabase.from('store_plan_extras').select('*').order('created_at'),
     supabase.from('channel_commissions').select('*'),
     supabase.from('outward').select('*').order('date', { ascending: false }),
+    supabase.from('settlements').select('*').order('date_logged', { ascending: false }),
   ]);
-  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward]) {
+  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward, settlements]) {
     if (r.error) throw r.error;
   }
   return {
@@ -29,6 +30,7 @@ export async function fetchAll() {
     storePlanExtras: storePlanExtras.data || [],
     commissions: commissions.data || [],
     outward: outward.data || [],
+    settlements: settlements.data || [],
   };
 }
 
@@ -106,7 +108,25 @@ export async function backupAll() {
     storePlanExtras: d.storePlanExtras,
     commissions: d.commissions,
     outward: d.outward,
+    settlements: d.settlements,
   };
+}
+
+export async function addSettlement(entry) {
+  const { error } = await supabase.from('settlements').insert(entry);
+  if (error) throw error;
+}
+export async function updateSettlement(entry) {
+  const { error } = await supabase.from('settlements').upsert(entry);
+  if (error) throw error;
+}
+export async function deleteSettlementBySale(saleId) {
+  const { error } = await supabase.from('settlements').delete().eq('sale_id', saleId);
+  if (error) throw error;
+}
+export async function deleteSettlement(id) {
+  const { error } = await supabase.from('settlements').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function addOutward(entry) {

@@ -14,6 +14,7 @@ import Inward from './pages/Inward';
 import StorePlanning from './pages/StorePlanning';
 import StockCheck from './pages/StockCheck';
 import Outward from './pages/Outward';
+import Settlements from './pages/Settlements';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '◆' },
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { id: 'store', label: 'Store Planning', icon: '⬒', adminOnly: true },
   { id: 'stockcheck', label: 'Stock Check', icon: '✓', adminOnly: true },
   { id: 'outward', label: 'Outward', icon: '↗', adminOnly: true },
+  { id: 'settlements', label: 'Settlements', icon: '⚖', adminOnly: true },
 ];
 
 function todayStr() {
@@ -120,6 +122,7 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'store' && <StorePlanning data={data} reload={reload} />}
             {!isViewer && route === 'stockcheck' && <StockCheck data={data} />}
             {!isViewer && route === 'outward' && <Outward data={data} reload={reload} />}
+            {!isViewer && route === 'settlements' && <Settlements data={data} reload={reload} />}
           </>
         )}
       </div>
