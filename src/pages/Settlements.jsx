@@ -3,7 +3,7 @@ import { CHANNELS, rupee, applyCommission, todayStr } from '../lib/calc';
 import { updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-const STATUSES = ['Pending', 'Partial', 'Settled', 'Cancelled'];
+const STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
 
 export default function Settlements({ data, reload }) {
   const { toast, confirm } = useUI();
@@ -121,12 +121,12 @@ export default function Settlements({ data, reload }) {
           <thead>
             <tr>
               <th>Sale date</th><th>Product</th><th>Size</th><th>Channel</th><th>Gross</th>
-              <th>Commission</th><th>Expected</th><th>Received</th><th>Settlement date</th><th>Status</th><th>Reason (if cancelled)</th><th></th>
+              <th>Commission</th><th>Expected</th><th>Received</th><th>Settlement date</th><th>Status</th><th>Notes</th><th>Reason (if cancelled)</th><th></th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={12} className="empty">No settlements match your filters.</td></tr>
+              <tr><td colSpan={13} className="empty">No settlements match your filters.</td></tr>
             ) : (
               sorted.map((s) => (
                 <tr key={s.id}>
@@ -185,11 +185,20 @@ export default function Settlements({ data, reload }) {
                       key={`st-${s.id}-${s.status}`}
                       defaultValue={s.status || 'Pending'}
                       onChange={(e) => (e.target.value === 'Settled' ? markSettled(s) : setStatus(s, e.target.value))}
-                      className={`tag ${s.status === 'Settled' ? 'ready' : s.status === 'Partial' ? 'progress' : s.status === 'Cancelled' ? 'reorder' : 'pending'}`}
+                      className={`tag ${s.status === 'Settled' ? 'ready' : s.status === 'Partial' || s.status === 'Invoice Sent' ? 'progress' : s.status === 'Cancelled' ? 'reorder' : 'pending'}`}
                       style={{ border: '1px solid var(--line)' }}
                     >
                       {STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                     </select>
+                  </td>
+                  <td>
+                    <input
+                      key={`notes-${s.id}-${s.notes}`}
+                      defaultValue={s.notes || ''}
+                      onBlur={(e) => editField(s, 'notes', e.target.value)}
+                      placeholder="e.g. invoice sent"
+                      style={{ width: 140, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    />
                   </td>
                   <td>
                     <input
@@ -213,7 +222,7 @@ export default function Settlements({ data, reload }) {
             <tfoot>
               <tr>
                 <td colSpan={6}>Total ({sorted.length} shown, excludes cancelled)</td>
-                <td>{rupee(totalExpected)}</td><td>{rupee(totalReceived)}</td><td colSpan={4}></td>
+                <td>{rupee(totalExpected)}</td><td>{rupee(totalReceived)}</td><td colSpan={5}></td>
               </tr>
             </tfoot>
           )}

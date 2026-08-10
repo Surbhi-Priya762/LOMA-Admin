@@ -90,11 +90,28 @@ export default function Home({ data, setRoute, reload, role }) {
           <h1 className="page-title">Home</h1>
           <div className="page-sub">Everything at a glance — Lõma production &amp; inventory</div>
         </div>
+        {role !== 'viewer' && (
+          <div
+            className="card"
+            style={{ width: 220, flex: '0 0 220px', borderColor: 'var(--brass)', cursor: 'pointer' }}
+            onClick={() => setRoute('settlements')}
+          >
+            <p className="section-title" style={{ marginBottom: 8 }}>Settlements — overall</p>
+            <div className="mini-note" style={{ marginBottom: 8 }}>Not tied to the month filter below — this is everything, always.</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
+              <span>Settled</span><strong>{settledCount} · {rupee(settledTotal)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+              <span>Pending</span><strong style={{ color: 'var(--rust)' }}>{pendingCount} · {rupee(pendingTotal)}</strong>
+            </div>
+            <div className="link-btn" style={{ marginTop: 8, display: 'inline-block' }}>Go to Settlements →</div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 18 }}>
         <p className="section-title">Dashboard period</p>
-        <div className="mini-note" style={{ marginBottom: 10 }}>All the numbers below (except Products/Fabrics/reorder counts) follow this — pick a month, or an exact date.</div>
+        <div className="mini-note" style={{ marginBottom: 10 }}>All the numbers below (except Products/Fabrics/reorder counts, and the Settlements box above) follow this — pick a month, or an exact date.</div>
         <div className="tabs-row">
           {availableMonths.map((m) => (
             <div
@@ -151,21 +168,6 @@ export default function Home({ data, setRoute, reload, role }) {
           <div className="mini-note" style={{ marginTop: 4 }}>For {periodLabel}: {rupee(periodExpenseTotal)} across {periodExpenses.length} entries.</div>
           <div style={{ marginTop: 8 }}>
             <button className="link-btn" onClick={() => setRoute('expenses')}>Go to Expenses →</button>
-          </div>
-        </div>
-      )}
-
-      {role !== 'viewer' && (
-        <div className="card" style={{ marginBottom: 18 }}>
-          <p className="section-title">Settlements — overall, right now</p>
-          <div className="grid-cards" style={{ marginBottom: 0, gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))' }}>
-            <Stat num={settledCount} label="Payments settled" />
-            <Stat num={rupee(settledTotal)} label="Total received" />
-            <Stat num={pendingCount} label="Payments pending" />
-            <Stat num={rupee(pendingTotal)} label="Still to receive" />
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button className="link-btn" onClick={() => setRoute('settlements')}>Go to Settlements →</button>
           </div>
         </div>
       )}
