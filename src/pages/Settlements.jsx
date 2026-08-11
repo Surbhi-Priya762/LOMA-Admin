@@ -1,17 +1,55 @@
 import { useState } from 'react';
-import { CHANNELS, rupee, applyCommission, todayStr } from '../lib/calc';
-import { updateSettlement, deleteSettlement } from '../lib/api';
+import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid } from '../lib/calc';
+import { addSettlement, updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 const STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
 
 export default function Settlements({ data, reload }) {
   const { toast, confirm } = useUI();
-  const { settlements } = data;
+  const { settlements, products } = data;
   const [monthFilter, setMonthFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [search, setSearch] = useState('');
+
+  // manual "Log a settlement" form
+  const [fProductId, setFProductId] = useState('');
+  const [fSize, setFSize] = useState('');
+  const [fChannel, setFChannel] = useState(CHANNELS[0]);
+  const [fGross, setFGross] = useState('');
+  const [fCommType, setFCommType] = useState('None');
+  const [fCommValue, setFCommValue] = useState('');
+  const [fReceived, setFReceived] = useState('');
+  const [fStatus, setFStatus] = useState('Pending');
+  const [fSettleDate, setFSettleDate] = useState('');
+  const [fNotes, setFNotes] = useState('');
+
+  const fSelectedProduct = products.find((p) => p.id === fProductId);
+  const fSizeOptions = fSelectedProduct ? (fSelectedProduct.sizes || []).map((s) => s.size) : SIZES;
+  const fExpected = applyCommission(fGross, { type: fCommType, value: fCommValue });
+
+  async function handleLogSettlement() {
+    if (!fSelectedProduct) { toast('Select a product first.'); return; }
+    if (!fSize) { toast('Select a size.'); return; }
+    if (fGross === '') { toast('Enter the price from the marketplace sheet.'); return; }
+    await addSettlement({
+      id: uid('settle'), sale_id: null, date_logged: todayStr(),
+      product_name: fSelectedProduct.name, size: fSize, channel: fChannel,
+      gross_amount: Number(fGross),
+      commission_type: fCommType === 'None' ? null : fCommType,
+      commission_value: fCommValue === '' ? null : Number(fCommValue),
+      expected_amount: fExpected === '' ? null : Number(fExpected),
+      received_amount: fReceived === '' ? null : Number(fReceived),
+      status: fStatus,
+      settlement_date: fSettleDate || null,
+      notes: fNotes.trim(),
+      cancel_reason: fStatus === 'Cancelled' ? fNotes.trim() : '',
+    });
+    toast('Settlement logged.');
+    setFProductId(''); setFSize(''); setFGross(''); setFCommValue(''); setFReceived(''); setFSettleDate(''); setFNotes(''); setFStatus('Pending'); setFCommType('None');
+    reload();
+  }
 
   const allMonths = Array.from(new Set((settlements || []).map((s) => (s.date_logged || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
@@ -81,8 +119,63 @@ export default function Settlements({ data, reload }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Settlements</h1>
-          <div className="page-sub">Every sale lands here automatically — track what each marketplace actually pays, on their own schedule, separate from the sale date</div>
+          <div className="page-sub">Every sale lands here automatically, or log one by hand from a marketplace sheet — track what each marketplace actually pays, on their own schedule</div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <p className="section-title">Log a settlement</p>
+        <div className="mini-note" style={{ marginBottom: 10 }}>Type in exactly what's on the marketplace's sheet — nothing is calculated for you unless you want it to be.</div>
+        <div className="field-row">
+          <div className="field">
+            <label>Product</label>
+            <select value={fProductId} onChange={(e) => { setFProductId(e.target.value); setFSize(''); }}>
+              <option value="">Select…</option>
+              {products.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Size</label>
+            <select value={fSize} onChange={(e) => setFSize(e.target.value)}>
+              <option value="">—</option>
+              {fSizeOptions.map((s) => <option value={s} key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Channel</label>
+            <select value={fChannel} onChange={(e) => setFChannel(e.target.value)}>
+              {CHANNELS.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Price (Rs.)</label><input type="number" step="any" value={fGross} onChange={(e) => setFGross(e.target.value)} /></div>
+        </div>
+        <div className="field-row">
+          <div className="field">
+            <label>Commission type</label>
+            <select value={fCommType} onChange={(e) => setFCommType(e.target.value)}>
+              <option value="None">None</option>
+              <option value="Percentage">Percentage off</option>
+              <option value="Flat">Flat amount off</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Commission value{fCommType === 'Percentage' ? ' (%)' : fCommType === 'Flat' ? ' (Rs.)' : ''}</label>
+            <input type="number" step="any" value={fCommValue} onChange={(e) => setFCommValue(e.target.value)} disabled={fCommType === 'None'} />
+          </div>
+          <div className="field"><label>Expected (Rs.) — from Price &amp; Commission</label><input value={fExpected !== '' ? rupee(fExpected) : ''} disabled /></div>
+          <div className="field"><label>Received (Rs.)</label><input type="number" step="any" value={fReceived} onChange={(e) => setFReceived(e.target.value)} /></div>
+        </div>
+        <div className="field-row">
+          <div className="field">
+            <label>Status</label>
+            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+              {STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Date of settlement</label><input type="date" value={fSettleDate} onChange={(e) => setFSettleDate(e.target.value)} /></div>
+          <div className="field"><label>Notes{fStatus === 'Cancelled' ? ' — reason' : ''}</label><input value={fNotes} onChange={(e) => setFNotes(e.target.value)} placeholder={fStatus === 'Cancelled' ? 'e.g. customer refused delivery' : 'e.g. invoice sent'} /></div>
+        </div>
+        <button className="btn" onClick={handleLogSettlement}>Log settlement</button>
       </div>
 
       <div className="tabs-row">
