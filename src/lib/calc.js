@@ -127,6 +127,28 @@ export function applyCommission(gross, commission) {
   return g.toFixed(2);
 }
 
+// Splits a marketplace SKU code like "LOM-CCSD-W-BRW-XL" into prefix + size,
+// then finds the matching product by its sku_prefix.
+export function matchProductBySku(skuCode, products) {
+  if (!skuCode) return null;
+  const parts = skuCode.trim().split('-');
+  const lastPart = parts[parts.length - 1].toUpperCase();
+  if (!SIZES.includes(lastPart)) return null;
+  const prefix = parts.slice(0, -1).join('-');
+  const product = products.find((p) => p.sku_prefix === prefix);
+  return product ? { product, size: lastPart } : null;
+}
+
+// Coyu's SKU codes spell out the full color name after our (shorter) color code
+// e.g. their "LOM-EFRTVD-W-NVB-NAVY-BLUE" vs our stored prefix "LOM-EFRTVD-W-NVB" —
+// so this matches by "starts with", checking longest known prefixes first to avoid
+// a short prefix accidentally matching the wrong product.
+export function matchProductBySkuPrefix(strippedSku, products) {
+  if (!strippedSku) return null;
+  const sorted = [...products].filter((p) => p.sku_prefix).sort((a, b) => b.sku_prefix.length - a.sku_prefix.length);
+  return sorted.find((p) => strippedSku === p.sku_prefix || strippedSku.startsWith(`${p.sku_prefix}-`)) || null;
+}
+
 export function uid(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
