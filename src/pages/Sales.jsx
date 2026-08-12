@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission } from '../lib/calc';
-import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale } from '../lib/api';
+import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 function downloadCsv(rows, filename) {
@@ -23,7 +23,9 @@ function downloadCsv(rows, filename) {
 
 export default function Sales({ data, reload }) {
   const { toast } = useUI();
-  const { products, salesLog, commissions } = data;
+  const { products, salesLog, commissions, settlements } = data;
+  const SETTLE_STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
+  const settlementForSale = (saleId) => (settlements || []).find((s) => s.sale_id === saleId);
   const [monthFilter, setMonthFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
@@ -113,7 +115,7 @@ export default function Sales({ data, reload }) {
     const isInstant = instantChannels.includes(channel);
     await addSettlement({
       id: uid('settle'), sale_id: entry.id, date_logged: date,
-      product_name: selectedProduct.name, size, channel,
+      product_name: selectedProduct.name, size, qty: q, channel,
       gross_amount: grossNum, commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
       expected_amount: netNum, received_amount: isInstant ? netNum : null,
       status: isInstant ? 'Settled' : 'Pending',
@@ -135,6 +137,26 @@ export default function Sales({ data, reload }) {
     await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
     toast('Sale undone, stock restored.');
+    reload();
+  }
+
+  // change settlement status right from the Sales table — creates the settlement record
+  // if this sale somehow doesn't have one yet (e.g. logged before Settlements existed).
+  async function changeSettlementStatus(sale, newStatus) {
+    const existing = settlementForSale(sale.id);
+    if (existing) {
+      await updateSettlement({ ...existing, status: newStatus });
+    } else {
+      const instantChannels = ['Our Store', 'Popup Sale'];
+      await addSettlement({
+        id: uid('settle'), sale_id: sale.id, date_logged: sale.date,
+        product_name: sale.product_name, size: sale.size, qty: sale.qty, channel: sale.channel,
+        gross_amount: saleGross(sale), commission_type: sale.commission_type, commission_value: sale.commission_value,
+        expected_amount: saleNet(sale), received_amount: null,
+        status: newStatus, settlement_date: newStatus === 'Settled' ? todayStr() : null, notes: '',
+      });
+    }
+    toast('Settlement status updated.');
     reload();
   }
 
@@ -319,12 +341,15 @@ export default function Sales({ data, reload }) {
       </div>
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th>Settlement status</th><th></th></tr></thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={10} className="empty">No sales match your filters.</td></tr>
+              <tr><td colSpan={11} className="empty">No sales match your filters.</td></tr>
             ) : (
-              sorted.map((l) => (
+              sorted.map((l) => {
+                const settlement = settlementForSale(l.id);
+                const settleStatus = settlement ? settlement.status || 'Pending' : null;
+                return (
                 <tr key={l.id}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
                   <td>{l.sale_type || saleTypeForChannel(l.channel) || '—'}</td>
@@ -366,16 +391,28 @@ export default function Sales({ data, reload }) {
                       style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                     />
                   </td>
+                  <td>
+                    <select
+                      key={`settle-${l.id}-${settleStatus}`}
+                      defaultValue={settleStatus || 'Pending'}
+                      onChange={(e) => changeSettlementStatus(l, e.target.value)}
+                      className={`tag ${settleStatus === 'Settled' ? 'ready' : settleStatus === 'Partial' || settleStatus === 'Invoice Sent' ? 'progress' : settleStatus === 'Cancelled' ? 'reorder' : 'pending'}`}
+                      style={{ border: '1px solid var(--line)' }}
+                    >
+                      {SETTLE_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </td>
                   <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
           {sorted.length > 0 && (
             <tfoot>
               <tr>
                 <td colSpan={3}>Total ({sorted.length} sale{sorted.length === 1 ? '' : 's'} shown)</td>
-                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td>
+                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td><td></td>
               </tr>
             </tfoot>
           )}

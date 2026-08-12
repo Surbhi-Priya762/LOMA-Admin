@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid } from '../lib/calc';
+import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel } from '../lib/calc';
 import { addSettlement, updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -13,15 +13,16 @@ export default function Settlements({ data, reload }) {
   const [statusFilter, setStatusFilter] = useState('All');
   const [search, setSearch] = useState('');
 
-  // manual "Log a settlement" form
+  // manual "Log a settlement" form — mirrors the Log a sale form
   const [fProductId, setFProductId] = useState('');
   const [fSize, setFSize] = useState('');
+  const [fQty, setFQty] = useState(1);
   const [fChannel, setFChannel] = useState(CHANNELS[0]);
   const [fGross, setFGross] = useState('');
   const [fCommType, setFCommType] = useState('None');
   const [fCommValue, setFCommValue] = useState('');
-  const [fReceived, setFReceived] = useState('');
   const [fStatus, setFStatus] = useState('Pending');
+  const [fSettleAmount, setFSettleAmount] = useState('');
   const [fSettleDate, setFSettleDate] = useState('');
   const [fNotes, setFNotes] = useState('');
 
@@ -35,19 +36,20 @@ export default function Settlements({ data, reload }) {
     if (fGross === '') { toast('Enter the price from the marketplace sheet.'); return; }
     await addSettlement({
       id: uid('settle'), sale_id: null, date_logged: todayStr(),
-      product_name: fSelectedProduct.name, size: fSize, channel: fChannel,
+      product_name: fSelectedProduct.name, size: fSize, qty: Number(fQty) || 1, channel: fChannel,
       gross_amount: Number(fGross),
       commission_type: fCommType === 'None' ? null : fCommType,
       commission_value: fCommValue === '' ? null : Number(fCommValue),
       expected_amount: fExpected === '' ? null : Number(fExpected),
-      received_amount: fReceived === '' ? null : Number(fReceived),
+      received_amount: fSettleAmount === '' ? null : Number(fSettleAmount),
       status: fStatus,
       settlement_date: fSettleDate || null,
       notes: fNotes.trim(),
       cancel_reason: fStatus === 'Cancelled' ? fNotes.trim() : '',
     });
     toast('Settlement logged.');
-    setFProductId(''); setFSize(''); setFGross(''); setFCommValue(''); setFReceived(''); setFSettleDate(''); setFNotes(''); setFStatus('Pending'); setFCommType('None');
+    setFProductId(''); setFSize(''); setFQty(1); setFGross(''); setFCommValue(''); setFSettleAmount('');
+    setFSettleDate(''); setFNotes(''); setFStatus('Pending'); setFCommType('None');
     reload();
   }
 
@@ -85,7 +87,7 @@ export default function Settlements({ data, reload }) {
   }
 
   async function editField(entry, field, value) {
-    const num = field === 'received_amount' || field === 'gross_amount' ? (value === '' ? null : Number(value)) : value;
+    const num = ['received_amount', 'gross_amount', 'qty'].includes(field) ? (value === '' ? null : Number(value)) : value;
     await updateSettlement({ ...entry, [field]: num });
     reload();
   }
@@ -119,7 +121,7 @@ export default function Settlements({ data, reload }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Settlements</h1>
-          <div className="page-sub">Every sale lands here automatically, or log one by hand from a marketplace sheet — track what each marketplace actually pays, on their own schedule</div>
+          <div className="page-sub">Same columns as Sales, plus Settlement date &amp; amount — track what each marketplace actually pays, on their own schedule</div>
         </div>
       </div>
 
@@ -141,13 +143,14 @@ export default function Settlements({ data, reload }) {
               {fSizeOptions.map((s) => <option value={s} key={s}>{s}</option>)}
             </select>
           </div>
+          <div className="field"><label>Qty</label><input type="number" min="1" value={fQty} onChange={(e) => setFQty(e.target.value)} /></div>
           <div className="field">
             <label>Channel</label>
             <select value={fChannel} onChange={(e) => setFChannel(e.target.value)}>
               {CHANNELS.map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
-          <div className="field"><label>Price (Rs.)</label><input type="number" step="any" value={fGross} onChange={(e) => setFGross(e.target.value)} /></div>
+          <div className="field"><label>Price / Gross (Rs.)</label><input type="number" step="any" value={fGross} onChange={(e) => setFGross(e.target.value)} /></div>
         </div>
         <div className="field-row">
           <div className="field">
@@ -162,17 +165,22 @@ export default function Settlements({ data, reload }) {
             <label>Commission value{fCommType === 'Percentage' ? ' (%)' : fCommType === 'Flat' ? ' (Rs.)' : ''}</label>
             <input type="number" step="any" value={fCommValue} onChange={(e) => setFCommValue(e.target.value)} disabled={fCommType === 'None'} />
           </div>
-          <div className="field"><label>Expected (Rs.) — from Price &amp; Commission</label><input value={fExpected !== '' ? rupee(fExpected) : ''} disabled /></div>
-          <div className="field"><label>Received (Rs.)</label><input type="number" step="any" value={fReceived} onChange={(e) => setFReceived(e.target.value)} /></div>
-        </div>
-        <div className="field-row">
-          <div className="field">
-            <label>Status</label>
+          <div className="field"><label>Net (Rs.) — from Gross &amp; Commission</label><input value={fExpected !== '' ? rupee(fExpected) : ''} disabled /></div>
+          <div className="field"><label>Status</label>
             <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
               {STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
-          <div className="field"><label>Date of settlement</label><input type="date" value={fSettleDate} onChange={(e) => setFSettleDate(e.target.value)} /></div>
+        </div>
+        <div className="field-row">
+          <div className="field" style={{ borderLeft: '3px solid var(--brass)', paddingLeft: 10 }}>
+            <label>Settlement amount (Rs.) — extra</label>
+            <input type="number" step="any" value={fSettleAmount} onChange={(e) => setFSettleAmount(e.target.value)} />
+          </div>
+          <div className="field" style={{ borderLeft: '3px solid var(--brass)', paddingLeft: 10 }}>
+            <label>Settlement date — extra</label>
+            <input type="date" value={fSettleDate} onChange={(e) => setFSettleDate(e.target.value)} />
+          </div>
           <div className="field"><label>Notes{fStatus === 'Cancelled' ? ' — reason' : ''}</label><input value={fNotes} onChange={(e) => setFNotes(e.target.value)} placeholder={fStatus === 'Cancelled' ? 'e.g. customer refused delivery' : 'e.g. invoice sent'} /></div>
         </div>
         <button className="btn" onClick={handleLogSettlement}>Log settlement</button>
@@ -198,8 +206,8 @@ export default function Settlements({ data, reload }) {
       </div>
 
       <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))' }}>
-        <div className="stat-card"><div className="stat-num">{rupee(totalExpected)}</div><div className="stat-label">Expected (filtered)</div></div>
-        <div className="stat-card"><div className="stat-num">{rupee(totalReceived)}</div><div className="stat-label">Received (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{rupee(totalExpected)}</div><div className="stat-label">Net (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{rupee(totalReceived)}</div><div className="stat-label">Settlement amount received (filtered)</div></div>
         <div className="stat-card"><div className="stat-num">{rupee(totalPending)}</div><div className="stat-label">Still pending (filtered)</div></div>
         <div className="stat-card"><div className="stat-num">{cancelledCount}</div><div className="stat-label">Cancelled (filtered)</div></div>
       </div>
@@ -207,34 +215,38 @@ export default function Settlements({ data, reload }) {
       <input className="search-input" placeholder="Search by product or marketplace…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 12, width: '100%', maxWidth: 340 }} />
 
       <div className="mini-note" style={{ marginBottom: 8 }}>
-        Commission, Received, Settlement date, and Status are all editable right here — change them anytime as marketplaces actually pay out.
+        Every column here is editable, same as Sales — Settlement amount and Settlement date are the two extra ones, marked with a gold edge.
       </div>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Sale date</th><th>Product</th><th>Size</th><th>Channel</th><th>Gross</th>
-              <th>Commission</th><th>Expected</th><th>Received</th><th>Settlement date</th><th>Status</th><th>Notes</th><th>Reason (if cancelled)</th><th></th>
+              <th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th>
+              <th>Commission</th><th>Gross</th><th>Net</th>
+              <th style={{ borderLeft: '2px solid var(--brass)' }}>Settlement amount</th>
+              <th>Settlement date</th>
+              <th>Status</th><th>Notes</th><th>Reason (if cancelled)</th><th></th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={13} className="empty">No settlements match your filters.</td></tr>
+              <tr><td colSpan={15} className="empty">No settlements match your filters.</td></tr>
             ) : (
               sorted.map((s) => (
                 <tr key={s.id}>
                   <td>{s.date_logged}</td>
                   <td>{s.product_name}</td>
                   <td>{s.size}</td>
-                  <td>{s.channel}</td>
                   <td>
                     <input
-                      key={`gross-${s.id}-${s.gross_amount}`}
-                      type="number" step="any" defaultValue={s.gross_amount ?? ''}
-                      onBlur={(e) => editField(s, 'gross_amount', e.target.value)}
-                      style={{ width: 75, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      key={`qty-${s.id}-${s.qty}`}
+                      type="number" step="any" defaultValue={s.qty ?? ''}
+                      onBlur={(e) => editField(s, 'qty', e.target.value)}
+                      style={{ width: 55, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                     />
                   </td>
+                  <td>{saleTypeForChannel(s.channel) || '—'}</td>
+                  <td>{s.channel}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <select
@@ -256,8 +268,16 @@ export default function Settlements({ data, reload }) {
                       />
                     </div>
                   </td>
-                  <td>{rupee(s.expected_amount)}</td>
                   <td>
+                    <input
+                      key={`gross-${s.id}-${s.gross_amount}`}
+                      type="number" step="any" defaultValue={s.gross_amount ?? ''}
+                      onBlur={(e) => editField(s, 'gross_amount', e.target.value)}
+                      style={{ width: 75, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td>{rupee(s.expected_amount)}</td>
+                  <td style={{ borderLeft: '2px solid var(--brass)' }}>
                     <input
                       key={`recv-${s.id}-${s.received_amount}`}
                       type="number" step="any" defaultValue={s.received_amount ?? ''}
@@ -314,7 +334,7 @@ export default function Settlements({ data, reload }) {
           {sorted.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={6}>Total ({sorted.length} shown, excludes cancelled)</td>
+                <td colSpan={8}>Total ({sorted.length} shown, excludes cancelled)</td>
                 <td>{rupee(totalExpected)}</td><td>{rupee(totalReceived)}</td><td colSpan={5}></td>
               </tr>
             </tfoot>
