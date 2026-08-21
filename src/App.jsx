@@ -11,10 +11,11 @@ import ProductionLog from './pages/ProductionLog';
 import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
 import Inward from './pages/Inward';
+import Outward from './pages/Outward';
 import StorePlanning from './pages/StorePlanning';
 import StockCheck from './pages/StockCheck';
-import Outward from './pages/Outward';
 import Settlements from './pages/Settlements';
+import CustomerDetails from './pages/CustomerDetails';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '◆' },
@@ -23,12 +24,13 @@ const NAV_ITEMS = [
   { id: 'stock', label: 'Stock', icon: '☰', adminOnly: true },
   { id: 'production', label: 'Production Log', icon: '✎', adminOnly: true },
   { id: 'inward', label: 'Inward / Returns', icon: '↩', adminOnly: true },
+  { id: 'outward', label: 'Outward', icon: '↗', adminOnly: true },
   { id: 'sales', label: 'Sales', icon: '₹', adminOnly: true },
+  { id: 'settlements', label: 'Settlements', icon: '⚖', adminOnly: true },
   { id: 'expenses', label: 'Expenses', icon: '§', adminOnly: true },
   { id: 'store', label: 'Store Planning', icon: '⬒', adminOnly: true },
   { id: 'stockcheck', label: 'Stock Check', icon: '✓', adminOnly: true },
-  { id: 'outward', label: 'Outward', icon: '↗', adminOnly: true },
-  { id: 'settlements', label: 'Settlements', icon: '⚖', adminOnly: true },
+  { id: 'customers', label: 'Customer Details', icon: '☺', adminOnly: true },
 ];
 
 function todayStr() {
@@ -104,8 +106,8 @@ function Shell({ role, onLogout }) {
             <p className="section-title">Could not load data</p>
             <p style={{ fontSize: 13 }}>{error}</p>
             <p className="mini-note">
-              Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set correctly, and that the
-              Supabase schema (including migration 2) has been created.
+              Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set correctly, and that every
+              Supabase migration has been run.
             </p>
           </div>
         )}
@@ -117,12 +119,13 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'stock' && <Stock data={data} reload={reload} />}
             {!isViewer && route === 'production' && <ProductionLog data={data} reload={reload} />}
             {!isViewer && route === 'inward' && <Inward data={data} reload={reload} />}
+            {!isViewer && route === 'outward' && <Outward data={data} reload={reload} />}
             {!isViewer && route === 'sales' && <Sales data={data} reload={reload} />}
+            {!isViewer && route === 'settlements' && <Settlements data={data} reload={reload} />}
             {!isViewer && route === 'expenses' && <Expenses data={data} reload={reload} />}
             {!isViewer && route === 'store' && <StorePlanning data={data} reload={reload} />}
             {!isViewer && route === 'stockcheck' && <StockCheck data={data} />}
-            {!isViewer && route === 'outward' && <Outward data={data} reload={reload} />}
-            {!isViewer && route === 'settlements' && <Settlements data={data} reload={reload} />}
+            {!isViewer && route === 'customers' && <CustomerDetails data={data} reload={reload} />}
           </>
         )}
       </div>

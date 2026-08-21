@@ -171,4 +171,28 @@ export function materialUsedByProducts(material, products) {
   const key = `${(material.category || 'Fabric').toLowerCase()}_name`;
   return products.filter((p) => p[key] === material.name);
 }
+// Add this to the END of your existing src/lib/calc.js file (don't replace the whole file).
+
+// Generic Excel-compatible CSV export, reused across every page.
+// columns: [{ key: 'date', label: 'Date' }, ...] — key can also be a function(row) for computed values.
+export function exportToExcel(rows, columns, filename) {
+  const header = columns.map((c) => c.label);
+  const lines = [header.map((h) => `"${String(h).replace(/"/g, '""')}"`).join(',')];
+  rows.forEach((row) => {
+    const cells = columns.map((c) => {
+      const val = typeof c.key === 'function' ? c.key(row) : row[c.key];
+      return `"${String(val ?? '').replace(/"/g, '""')}"`;
+    });
+    lines.push(cells.join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
