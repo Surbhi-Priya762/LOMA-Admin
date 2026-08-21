@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { productTargetMRP, productProductionCost, productTotalStock, rupee } from '../lib/calc';
+import { productTargetMRP, productProductionCost, productTotalStock, rupee, todayStr, exportToExcel } from '../lib/calc';
 import ProductModal from './ProductModal';
 import ProductViewModal from './ProductViewModal';
 
@@ -14,6 +14,23 @@ export default function Products({ data, reload, role }) {
 
   const openProduct = openId === undefined || openId === null ? null : products.find((p) => p.id === openId);
 
+  function handleExport() {
+    exportToExcel(
+      list,
+      [
+        { key: 'name', label: 'Name' },
+        { key: 'sku_prefix', label: 'SKU' },
+        { key: 'type', label: 'Type' },
+        { key: 'fabric_name', label: 'Fabric' },
+        { key: (p) => { const mrp = productTargetMRP(p, settings.daily_labour_budget); return mrp != null ? mrp.toFixed(2) : ''; }, label: 'Target MRP' },
+        { key: (p) => { const c = productProductionCost(p, settings.daily_labour_budget); return c != null ? c.toFixed(2) : ''; }, label: 'Production cost' },
+        { key: (p) => productProductionCost(p, settings.daily_labour_budget) == null ? 'Incomplete' : 'Costed', label: 'Status' },
+        { key: (p) => productTotalStock(p), label: 'Total stock' },
+      ],
+      `loma-products-${todayStr()}.csv`
+    );
+  }
+
   return (
     <div>
       <div className="topline">
@@ -23,17 +40,11 @@ export default function Products({ data, reload, role }) {
             {products.length} products{isViewer ? '' : ' — click any card to view or edit its full recipe & costing'}
           </div>
         </div>
-        {!isViewer && (
-          <div className="toolbar">
-            <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <button className="btn" onClick={() => setOpenId(null)}>+ Add product</button>
-          </div>
-        )}
-        {isViewer && (
-          <div className="toolbar">
-            <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        )}
+        <div className="toolbar">
+          <input className="search-input" placeholder="Search products or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {!isViewer && <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>}
+          {!isViewer && <button className="btn" onClick={() => setOpenId(null)}>+ Add product</button>}
+        </div>
       </div>
 
       {list.length === 0 ? (

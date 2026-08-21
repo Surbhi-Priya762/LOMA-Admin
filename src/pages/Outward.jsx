@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SIZES, todayStr, uid } from '../lib/calc';
+import { SIZES, todayStr, uid, exportToExcel } from '../lib/calc';
 import { addOutward, deleteOutward, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -21,6 +21,21 @@ export default function Outward({ data, reload }) {
   const filtered = (outward || []).filter((o) => !q || (o.product_name || '').toLowerCase().includes(q) || (o.person_name || '').toLowerCase().includes(q));
   const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const totalUnits = filtered.reduce((a, o) => a + (Number(o.qty) || 0), 0);
+
+  function handleExport() {
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date', label: 'Date' },
+        { key: 'product_name', label: 'Product' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty', label: 'Qty' },
+        { key: 'person_name', label: 'Person' },
+        { key: 'notes', label: 'Notes' },
+      ],
+      `loma-outward-${todayStr()}.csv`
+    );
+  }
 
   async function handleSubmit() {
     if (!selectedProduct) { toast('Select a product first.'); return; }
@@ -62,6 +77,9 @@ export default function Outward({ data, reload }) {
         <div>
           <h1 className="page-title">Outward</h1>
           <div className="page-sub">Pieces sent out for marketing, gifting, or influencers — reduces stock automatically, but is never counted as a sale</div>
+        </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
         </div>
       </div>
 

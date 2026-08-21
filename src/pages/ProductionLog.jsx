@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SIZES, todayStr, fmt, uid, materialTotalIssued } from '../lib/calc';
+import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel } from '../lib/calc';
 import { addProductionLog, updateProductionLog, deleteProductionLog, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -27,6 +27,23 @@ export default function ProductionLog({ data, reload }) {
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
 
   const sorted = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  function handleExport() {
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date', label: 'Date logged' },
+        { key: 'product_name', label: 'Product' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty', label: 'Qty' },
+        { key: 'status', label: 'Status' },
+        { key: 'ready_date', label: 'Ready date' },
+        { key: (l) => { const d = daysBetween(l.date, l.ready_date); return d != null ? d : ''; }, label: 'Days to Ready' },
+        { key: 'remarks', label: 'Remarks' },
+      ],
+      `loma-production-log-${todayStr()}.csv`
+    );
+  }
 
   async function adjustStockForStatusChange(entry, wasReady, willBeReady) {
     if (wasReady === willBeReady) return;
@@ -70,8 +87,8 @@ export default function ProductionLog({ data, reload }) {
     const wasReady = entry.status === 'Ready';
     const willBeReady = newStatus === 'Ready';
     let readyDate = entry.ready_date;
-    if (willBeReady && !wasReady) readyDate = readyDate || todayStr(); // auto-fill the day it became Ready
-    if (!willBeReady && wasReady) readyDate = null; // no longer ready, clear it
+    if (willBeReady && !wasReady) readyDate = readyDate || todayStr();
+    if (!willBeReady && wasReady) readyDate = null;
 
     await updateProductionLog({ ...entry, status: newStatus, ready_date: readyDate });
     await adjustStockForStatusChange(entry, wasReady, willBeReady);
@@ -98,7 +115,6 @@ export default function ProductionLog({ data, reload }) {
     reload();
   }
 
-  // live preview of fabric that will be consumed
   let preview = null;
   if (selectedProduct && size && qty) {
     const q = Number(qty) || 0;
@@ -123,6 +139,9 @@ export default function ProductionLog({ data, reload }) {
         <div>
           <h1 className="page-title">Production Log</h1>
           <div className="page-sub">Log every batch — change the status anytime, and Ready adds to finished-goods stock and deducts fabric automatically</div>
+        </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CATS, materialUsedByProducts } from '../lib/calc';
+import { CATS, materialUsedByProducts, todayStr, exportToExcel } from '../lib/calc';
 import MaterialModal from './MaterialModal';
 
 export default function RawMaterials({ data, reload }) {
@@ -10,6 +10,23 @@ export default function RawMaterials({ data, reload }) {
   const list = catFilter === 'All' ? materials : materials.filter((m) => m.category === catFilter);
   const openMaterial = openId === undefined || openId === null ? null : materials.find((m) => m.id === openId);
 
+  function handleExport() {
+    exportToExcel(
+      list,
+      [
+        { key: 'name', label: 'Name' },
+        { key: 'category', label: 'Category' },
+        { key: 'unit', label: 'Unit' },
+        { key: 'price', label: 'Price/unit' },
+        { key: 'stock', label: 'In house' },
+        { key: 'block', label: 'Block' },
+        { key: 'reorder_level', label: 'Reorder level' },
+        { key: (m) => materialUsedByProducts(m, products).length, label: 'Used in (products)' },
+      ],
+      `loma-raw-materials-${todayStr()}.csv`
+    );
+  }
+
   return (
     <div>
       <div className="topline">
@@ -18,6 +35,7 @@ export default function RawMaterials({ data, reload }) {
           <div className="page-sub">{materials.length} materials — fabric, button, thread, fusing, zip, hook, elastic &amp; lining, all in one place</div>
         </div>
         <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
           <button className="btn" onClick={() => setOpenId(null)}>+ Add raw material</button>
         </div>
       </div>

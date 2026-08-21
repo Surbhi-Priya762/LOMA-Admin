@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SIZES, CHANNELS, todayStr, uid } from '../lib/calc';
+import { SIZES, CHANNELS, todayStr, uid, exportToExcel } from '../lib/calc';
 import { addInward, deleteInward, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -22,6 +22,21 @@ export default function Inward({ data, reload }) {
   const q = search.toLowerCase();
   const filtered = inward.filter((i) => !q || (i.product_name || '').toLowerCase().includes(q) || (i.source || '').toLowerCase().includes(q));
   const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  function handleExport() {
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date', label: 'Date' },
+        { key: 'source', label: 'From' },
+        { key: 'product_name', label: 'Product' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty', label: 'Qty' },
+        { key: 'remarks', label: 'Remarks' },
+      ],
+      `loma-inward-${todayStr()}.csv`
+    );
+  }
 
   async function handleSubmit() {
     if (!selectedProduct) { toast('Select a product first.'); return; }
@@ -62,6 +77,9 @@ export default function Inward({ data, reload }) {
         <div>
           <h1 className="page-title">Inward / Returns</h1>
           <div className="page-sub">Log anything coming back — a return, an exchange, stock received — and it adds to finished-goods stock automatically</div>
+        </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
         </div>
       </div>
 

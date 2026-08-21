@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { materialTotalIssued, fmt, rupee } from '../lib/calc';
+import { materialTotalIssued, fmt, rupee, todayStr, exportToExcel } from '../lib/calc';
 import { saveMaterial, saveProduct } from '../lib/api';
 
 export default function Stock({ data, reload }) {
@@ -34,6 +34,24 @@ export default function Stock({ data, reload }) {
 function MaterialStockTable({ materials, products, productionLog, search, reload }) {
   const q = search.toLowerCase();
   const list = materials.filter((m) => !q || m.name.toLowerCase().includes(q) || m.category.toLowerCase().includes(q));
+
+  function handleExport() {
+    exportToExcel(
+      list,
+      [
+        { key: 'name', label: 'Material' },
+        { key: 'category', label: 'Category' },
+        { key: 'unit', label: 'Unit' },
+        { key: 'price', label: 'Price/unit' },
+        { key: 'stock', label: 'In house' },
+        { key: (m) => fmt(materialTotalIssued(m, products, productionLog)) || 0, label: 'Used (Ready production)' },
+        { key: (m) => { const used = materialTotalIssued(m, products, productionLog); return m.stock != null ? fmt(Number(m.stock) - used) : ''; }, label: 'Current stock' },
+        { key: 'block', label: 'Block' },
+      ],
+      `loma-material-stock-${todayStr()}.csv`
+    );
+  }
+
   if (materials.length === 0) return <div className="empty">No materials yet — add them on the Raw Materials page.</div>;
   if (list.length === 0) return <div className="empty">No materials match your search.</div>;
 
@@ -44,6 +62,9 @@ function MaterialStockTable({ materials, products, productionLog, search, reload
 
   return (
     <>
+      <div style={{ marginBottom: 12 }}>
+        <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
+      </div>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
@@ -92,6 +113,20 @@ function FinishedStockTable({ products, search, reload }) {
     if (q && !p.name.toLowerCase().includes(q) && !(p.sku_prefix || '').toLowerCase().includes(q)) return;
     (p.sizes || []).forEach((s) => rows.push({ product: p, size: s.size, stock: s.stock }));
   });
+
+  function handleExport() {
+    exportToExcel(
+      rows,
+      [
+        { key: (r) => r.product.name, label: 'Product' },
+        { key: (r) => `${r.product.sku_prefix || '—'}-${r.size}`, label: 'SKU' },
+        { key: 'size', label: 'Size' },
+        { key: 'stock', label: 'Stock (pcs)' },
+      ],
+      `loma-finished-stock-${todayStr()}.csv`
+    );
+  }
+
   if (rows.length === 0) return <div className="empty">No products match your search.</div>;
 
   async function updateStock(product, size, value) {
@@ -102,23 +137,28 @@ function FinishedStockTable({ products, search, reload }) {
   }
 
   return (
-    <div className="table-wrap">
-      <table className="data-table">
-        <thead><tr><th>Product</th><th>SKU</th><th>Size</th><th>Stock (pcs)</th></tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={`${r.product.id}-${r.size}`}>
-              <td>{r.product.name}</td>
-              <td>{r.product.sku_prefix || '—'}-{r.size}</td>
-              <td>{r.size}</td>
-              <td>
-                <input type="number" defaultValue={r.stock ?? 0} style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
-                  onBlur={(e) => updateStock(r.product, r.size, e.target.value)} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div style={{ marginBottom: 12 }}>
+        <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
+      </div>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Product</th><th>SKU</th><th>Size</th><th>Stock (pcs)</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.product.id}-${r.size}`}>
+                <td>{r.product.name}</td>
+                <td>{r.product.sku_prefix || '—'}-{r.size}</td>
+                <td>{r.size}</td>
+                <td>
+                  <input type="number" defaultValue={r.stock ?? 0} style={{ width: 80, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    onBlur={(e) => updateStock(r.product, r.size, e.target.value)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

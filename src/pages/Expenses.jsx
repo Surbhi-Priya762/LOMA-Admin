@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { todayStr, rupee, uid } from '../lib/calc';
+import { todayStr, rupee, uid, exportToExcel } from '../lib/calc';
 import { addExpense, deleteExpense } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -43,6 +43,25 @@ export default function Expenses({ data, reload }) {
     byCategory[e.category || 'Uncategorised'] = (byCategory[e.category || 'Uncategorised'] || 0) + (Number(e.amount) || 0);
   });
 
+  function handleExport() {
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date', label: 'Date' },
+        { key: 'brand', label: 'Company' },
+        { key: 'category', label: 'Category' },
+        { key: 'vendor', label: 'Vendor' },
+        { key: 'description', label: 'Description' },
+        { key: 'amount', label: 'Amount' },
+        { key: 'payment_mode', label: 'Payment mode' },
+        { key: 'invoice_ref', label: 'Invoice/Ref no.' },
+        { key: 'gst_applicable', label: 'GST' },
+        { key: 'notes', label: 'Notes' },
+      ],
+      `loma-expenses-${todayStr()}.csv`
+    );
+  }
+
   async function handleSubmit() {
     const amt = Number(amount);
     if (!amt || amt <= 0) { toast('Enter a valid amount.'); return; }
@@ -69,7 +88,10 @@ export default function Expenses({ data, reload }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Expenses</h1>
-          <div className="page-sub">Track Sauca &amp; Loma spend by category — nobody has to remember to update this if the Home page keeps flagging it</div>
+          <div className="page-sub">Track {COMPANY}'s spend by category — nobody has to remember to update this if the Home page keeps flagging it</div>
+        </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
         </div>
       </div>
 

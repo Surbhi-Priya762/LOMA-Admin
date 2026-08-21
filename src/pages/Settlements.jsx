@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel } from '../lib/calc';
+import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel, exportToExcel } from '../lib/calc';
 import { addSettlement, updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -72,6 +72,30 @@ export default function Settlements({ data, reload }) {
     .reduce((a, s) => a + ((Number(s.expected_amount) || 0) - (Number(s.received_amount) || 0)), 0);
   const cancelledCount = filtered.filter((s) => s.status === 'Cancelled').length;
 
+  function handleExport() {
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date_logged', label: 'Date' },
+        { key: 'product_name', label: 'Product' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty', label: 'Qty' },
+        { key: (s) => saleTypeForChannel(s.channel) || '', label: 'Type' },
+        { key: 'channel', label: 'Channel' },
+        { key: 'commission_type', label: 'Commission type' },
+        { key: 'commission_value', label: 'Commission value' },
+        { key: 'gross_amount', label: 'Gross' },
+        { key: 'expected_amount', label: 'Net (expected)' },
+        { key: 'received_amount', label: 'Settlement amount' },
+        { key: 'settlement_date', label: 'Settlement date' },
+        { key: 'status', label: 'Status' },
+        { key: 'notes', label: 'Notes' },
+        { key: 'cancel_reason', label: 'Reason (if cancelled)' },
+      ],
+      `loma-settlements-${todayStr()}.csv`
+    );
+  }
+
   async function recalcExpected(entry) {
     const newExpected = applyCommission(entry.gross_amount ?? '', { type: entry.commission_type, value: entry.commission_value });
     await updateSettlement({ ...entry, expected_amount: newExpected === '' ? null : Number(newExpected) });
@@ -122,6 +146,9 @@ export default function Settlements({ data, reload }) {
         <div>
           <h1 className="page-title">Settlements</h1>
           <div className="page-sub">Same columns as Sales, plus Settlement date &amp; amount — track what each marketplace actually pays, on their own schedule</div>
+        </div>
+        <div className="toolbar">
+          <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
         </div>
       </div>
 
