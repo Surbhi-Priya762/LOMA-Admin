@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel } from '../lib/calc';
-import { addProductionLog, updateProductionLog, deleteProductionLog, saveProduct } from '../lib/api';
+import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel, blankQCChecklist } from '../lib/calc';
+import { addProductionLog, updateProductionLog, deleteProductionLog, addQualityCheck, deleteQualityCheckByProductionLog } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 const STATUSES = ['Pending', 'In Progress', 'Ready'];
@@ -45,19 +45,12 @@ export default function ProductionLog({ data, reload }) {
     );
   }
 
-  async function adjustStockForStatusChange(entry, wasReady, willBeReady) {
-    if (wasReady === willBeReady) return;
-    const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
-    if (!p) return;
-    const delta = (willBeReady ? 1 : 0) - (wasReady ? 1 : 0);
-    const updated = {
-      ...p,
-      sizes: p.sizes.map((s) =>
-        s.size === entry.size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) + delta * Number(entry.qty)) } : s
-      ),
-    };
-    delete updated.updated_at;
-    await saveProduct(updated);
+  async function createQualityCheck(entry) {
+    await addQualityCheck({
+      id: uid('qc'), production_log_id: entry.id, date: todayStr(),
+      product_id: entry.product_id, product_name: entry.product_name, size: entry.size, qty: entry.qty,
+      checked_by: '', checklist: blankQCChecklist(), overall_result: 'Pending', rework_instructions: '', passed_date: null,
+    });
   }
 
   async function handleSubmit() {
@@ -74,11 +67,11 @@ export default function ProductionLog({ data, reload }) {
     await addProductionLog(entry);
 
     if (status === 'Ready') {
-      const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) + q } : s)) };
-      delete updated.updated_at;
-      await saveProduct(updated);
+      await createQualityCheck(entry);
+      toast(`Logged ${q} × ${selectedProduct.name} (${size}) — sent to Quality Check.`);
+    } else {
+      toast(`Logged ${q} × ${selectedProduct.name} (${size}).`);
     }
-    toast(`Logged ${q} × ${selectedProduct.name} (${size}).`);
     setRemarks('');
     reload();
   }
@@ -91,8 +84,17 @@ export default function ProductionLog({ data, reload }) {
     if (!willBeReady && wasReady) readyDate = null;
 
     await updateProductionLog({ ...entry, status: newStatus, ready_date: readyDate });
-    await adjustStockForStatusChange(entry, wasReady, willBeReady);
-    toast(`Status changed to ${newStatus}${willBeReady && !wasReady ? ' — stock updated' : !willBeReady && wasReady ? ' — stock reversed' : ''}.`);
+
+    if (willBeReady && !wasReady) {
+      await createQualityCheck(entry);
+      toast('Status changed to Ready — sent to Quality Check.');
+    } else if (!willBeReady && wasReady) {
+      // pulled back out of Ready before QC was resolved — remove the now-irrelevant pending QC entry
+      await deleteQualityCheckByProductionLog(entry.id);
+      toast(`Status changed to ${newStatus} — removed from Quality Check.`);
+    } else {
+      toast(`Status changed to ${newStatus}.`);
+    }
     reload();
   }
 
@@ -102,16 +104,9 @@ export default function ProductionLog({ data, reload }) {
   }
 
   async function handleUndo(entry) {
-    if (entry.status === 'Ready') {
-      const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
-      if (p) {
-        const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) - Number(entry.qty)) } : s)) };
-        delete updated.updated_at;
-        await saveProduct(updated);
-      }
-    }
+    await deleteQualityCheckByProductionLog(entry.id);
     await deleteProductionLog(entry.id);
-    toast('Entry undone, stock adjusted.');
+    toast('Entry undone.');
     reload();
   }
 
@@ -138,7 +133,7 @@ export default function ProductionLog({ data, reload }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Production Log</h1>
-          <div className="page-sub">Log every batch — change the status anytime, and Ready adds to finished-goods stock and deducts fabric automatically</div>
+          <div className="page-sub">Log every batch — marking it Ready sends it to Quality Check, and stock is only added once QC passes</div>
         </div>
         <div className="toolbar">
           <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>

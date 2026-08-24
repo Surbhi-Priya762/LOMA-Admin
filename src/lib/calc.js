@@ -1,4 +1,65 @@
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const QC_SECTIONS = [
+  { section: 'Fabric & Cutting', items: [
+    'Fabric matches approved swatch/shade for this style',
+    'No visible weave defects, slubs, or pulls on main panels',
+    'Grain line straight — no bowing or skew on panels',
+    'Pattern/stripe matched at side seams and yoke (if applicable)',
+    'Cut pieces match pattern size — no short/uneven panels',
+  ]},
+  { section: 'Stitching & Construction', items: [
+    'Seams straight, even, no puckering or wavy lines',
+    'Stitch density consistent — no skipped or loose stitches',
+    'Seam allowance consistent throughout',
+    'Armhole, neckline and hem stitched flat, no pulling',
+    'Understitching secure on facings/collars',
+    'Topstitching straight and even width from edge',
+    'No open seams or loose threads at stress points (underarm, crotch, side splits)',
+  ]},
+  { section: 'Fastenings — Buttons, Zips, Hooks', items: [
+    'All buttons attached securely, correct thread color',
+    'Button count matches design — none missing',
+    'Buttonholes clean-cut, no fraying, correct size for button',
+    'Zip runs smoothly top to bottom, no snagging',
+    'Zip pull and slider secure, tape stitched flat',
+    'Hooks, snaps, or drawstrings functioning and securely attached',
+    'Ties/belts correct length and securely attached',
+  ]},
+  { section: 'Finishing & Pressing', items: [
+    'Garment pressed flat — no crease marks or shine from iron',
+    'Hems even all around, correct finished length',
+    'No visible chalk marks, tailor tacks, or basting threads left in',
+    'No loose or hanging threads anywhere on garment',
+    'Trims (lace, piping, embroidery) secure and symmetrical',
+  ]},
+  { section: 'Stains & Surface Check', items: [
+    'No oil, grease, or machine-oil stains',
+    'No dirt, dust, or footprint marks',
+    'No visible watermarks or discoloration',
+    'No rust marks near metal trims',
+    'Garment odor-free (no chemical or mustiness)',
+  ]},
+  { section: 'Measurements (spot check against tech pack)', items: [
+    'Chest/bust measurement within tolerance',
+    'Length (shoulder to hem) within tolerance',
+    'Sleeve length within tolerance',
+    'Waist/hip measurement within tolerance',
+  ]},
+  { section: 'Labels & Packaging', items: [
+    'Brand label correctly placed and securely stitched',
+    'Size label correct for this piece',
+    'Care label present, correct wash instructions',
+    'Price/SKU tag attached, matches order',
+    'Folded/hung per packing standard, poly bag sealed',
+  ]},
+];
+export function blankQCChecklist() {
+  const rows = [];
+  QC_SECTIONS.forEach(({ section, items }) => {
+    items.forEach((item) => rows.push({ section, item, ok: false, fix: false, note: '' }));
+  });
+  return rows;
+}
 export const SALE_TYPES = ['Online', 'Offline'];
 export const CHANNELS_BY_TYPE = {
   Online: ['Myntra', 'Nykaa', 'Shopify', 'Other'],

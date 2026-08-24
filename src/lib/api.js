@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 export async function fetchAll() {
   const [
     products, materials, productionLog, salesLog, settings, lastUpdate,
-    expenses, inward, storePlanExtras, commissions, outward, settlements, customerDetails,
+    expenses, inward, storePlanExtras, commissions, outward, settlements, customerDetails, qualityChecks,
   ] = await Promise.all([
     supabase.from('products').select('*').order('name'),
     supabase.from('materials').select('*').order('category').order('name'),
@@ -18,8 +18,9 @@ export async function fetchAll() {
     supabase.from('outward').select('*').order('date', { ascending: false }),
     supabase.from('settlements').select('*').order('date_logged', { ascending: false }),
     supabase.from('customer_details').select('*').order('date', { ascending: false }),
+    supabase.from('quality_checks').select('*').order('date', { ascending: false }),
   ]);
-  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward, settlements, customerDetails]) {
+  for (const r of [products, materials, productionLog, salesLog, settings, lastUpdate, expenses, inward, storePlanExtras, commissions, outward, settlements, customerDetails, qualityChecks]) {
     if (r.error) throw r.error;
   }
   return {
@@ -36,6 +37,7 @@ export async function fetchAll() {
     outward: outward.data || [],
     settlements: settlements.data || [],
     customerDetails: customerDetails.data || [],
+    qualityChecks: qualityChecks.data || [],
   };
 }
 
@@ -109,6 +111,7 @@ export async function backupAll() {
     outward: d.outward,
     settlements: d.settlements,
     customerDetails: d.customerDetails,
+    qualityChecks: d.qualityChecks,
   };
 }
 
@@ -184,5 +187,22 @@ export async function updateCustomerDetail(entry) {
 }
 export async function deleteCustomerDetail(id) {
   const { error } = await supabase.from('customer_details').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function addQualityCheck(entry) {
+  const { error } = await supabase.from('quality_checks').insert(entry);
+  if (error) throw error;
+}
+export async function updateQualityCheck(entry) {
+  const { error } = await supabase.from('quality_checks').upsert(entry);
+  if (error) throw error;
+}
+export async function deleteQualityCheck(id) {
+  const { error } = await supabase.from('quality_checks').delete().eq('id', id);
+  if (error) throw error;
+}
+export async function deleteQualityCheckByProductionLog(productionLogId) {
+  const { error } = await supabase.from('quality_checks').delete().eq('production_log_id', productionLogId);
   if (error) throw error;
 }

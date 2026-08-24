@@ -16,6 +16,7 @@ import StorePlanning from './pages/StorePlanning';
 import StockCheck from './pages/StockCheck';
 import Settlements from './pages/Settlements';
 import CustomerDetails from './pages/CustomerDetails';
+import QualityCheck from './pages/QualityCheck';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '◆' },
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { id: 'materials', label: 'Raw Materials', icon: '▤', adminOnly: true },
   { id: 'stock', label: 'Stock', icon: '☰', adminOnly: true },
   { id: 'production', label: 'Production Log', icon: '✎', adminOnly: true },
+  { id: 'qualitycheck', label: 'Quality Check', icon: '⚑', adminOnly: true },
   { id: 'inward', label: 'Inward / Returns', icon: '↩', adminOnly: true },
   { id: 'outward', label: 'Outward', icon: '↗', adminOnly: true },
   { id: 'sales', label: 'Sales', icon: '₹', adminOnly: true },
@@ -118,6 +120,7 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'materials' && <RawMaterials data={data} reload={reload} />}
             {!isViewer && route === 'stock' && <Stock data={data} reload={reload} />}
             {!isViewer && route === 'production' && <ProductionLog data={data} reload={reload} />}
+            {!isViewer && route === 'qualitycheck' && <QualityCheck data={data} reload={reload} />}
             {!isViewer && route === 'inward' && <Inward data={data} reload={reload} />}
             {!isViewer && route === 'outward' && <Outward data={data} reload={reload} />}
             {!isViewer && route === 'sales' && <Sales data={data} reload={reload} />}
