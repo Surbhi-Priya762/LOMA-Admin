@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel, blankQCChecklist } from '../lib/calc';
 import { addProductionLog, updateProductionLog, deleteProductionLog, addQualityCheck, deleteQualityCheckByProductionLog } from '../lib/api';
 import { useUI } from '../context/UIContext';
+import ProductionLogEditModal from './ProductionLogEditModal';
 
 const STATUSES = ['Pending', 'In Progress', 'Ready'];
 
@@ -15,7 +16,8 @@ function daysBetween(a, b) {
 
 export default function ProductionLog({ data, reload }) {
   const { toast } = useUI();
-  const { products, productionLog, materials } = data;
+  const { products, productionLog, materials, qualityChecks } = data;
+  const [editId, setEditId] = useState(null);
   const [productId, setProductId] = useState('');
   const [size, setSize] = useState('');
   const [qty, setQty] = useState(1);
@@ -214,7 +216,10 @@ export default function ProductionLog({ data, reload }) {
                     </td>
                     <td>{days != null ? `${days} day${days === 1 ? '' : 's'}` : '—'}</td>
                     <td>{l.remarks || ''}</td>
-                    <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
+                      <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                    </td>
                   </tr>
                 );
               })
@@ -222,6 +227,16 @@ export default function ProductionLog({ data, reload }) {
           </tbody>
         </table>
       </div>
+
+      {editId && (
+        <ProductionLogEditModal
+          entry={sorted.find((l) => l.id === editId)}
+          products={products}
+          linkedQC={(qualityChecks || []).find((qc) => qc.production_log_id === editId)}
+          onClose={() => setEditId(null)}
+          onSaved={() => { setEditId(null); reload(); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,35 +1,20 @@
 import { useEffect, useState } from 'react';
-import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission } from '../lib/calc';
+import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel } from '../lib/calc';
 import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
-
-function downloadCsv(rows, filename) {
-  const header = ['Date', 'Product', 'Size', 'Qty', 'Sale Type', 'Channel', 'Commission Type', 'Commission Value', 'Gross', 'Net'];
-  const lines = [header.join(',')];
-  rows.forEach((l) => {
-    const cells = [l.date, l.product_name, l.size, l.qty, l.sale_type || saleTypeForChannel(l.channel) || '', l.channel, l.commission_type || '', l.commission_value ?? '', fmt(saleGross(l)) ?? '', fmt(saleNet(l)) ?? ''];
-    lines.push(cells.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','));
-  });
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+import SalesEditModal from './SalesEditModal';
 
 export default function Sales({ data, reload }) {
   const { toast } = useUI();
   const { products, salesLog, commissions, settlements } = data;
   const SETTLE_STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
   const settlementForSale = (saleId) => (settlements || []).find((s) => s.sale_id === saleId);
+
   const [monthFilter, setMonthFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [editId, setEditId] = useState(null);
 
   const [productId, setProductId] = useState('');
   const [size, setSize] = useState('');
@@ -68,7 +53,6 @@ export default function Sales({ data, reload }) {
     if (p && p.selling_price != null) setGross(p.selling_price);
   }
 
-  // When channel changes, load that channel's default commission into the per-sale boxes — still fully editable before you log it.
   function selectChannel(ch) {
     setChannel(ch);
     const def = channelDefault(ch);
@@ -76,13 +60,11 @@ export default function Sales({ data, reload }) {
     setCommValue(def.value ?? '');
   }
 
-  // Switching Online/Offline resets Channel to the first option in that group.
   function selectSaleType(type) {
     setSaleType(type);
     selectChannel(CHANNELS_BY_TYPE[type][0]);
   }
 
-  // Net always follows Gross + this sale's own commission box — type/value here, not just the channel default.
   useEffect(() => {
     setNet(applyCommission(gross, { type: commType, value: commValue }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,8 +82,7 @@ export default function Sales({ data, reload }) {
       id: uid('sale'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: q, channel, sale_type: saleType,
       commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
-      gross_amount: grossNum,
-      net_amount: netNum,
+      gross_amount: grossNum, net_amount: netNum,
       price: gross === '' ? null : Number(gross) / q,
     };
     await addSale(entry);
@@ -109,8 +90,6 @@ export default function Sales({ data, reload }) {
     delete updated.updated_at;
     await saveProduct(updated);
 
-    // Every sale gets a matching settlement row, tracked on the marketplace's own payment
-    // cycle — cash channels are already "Settled", marketplaces start "Pending".
     const instantChannels = ['Our Store', 'Popup Sale'];
     const isInstant = instantChannels.includes(channel);
     await addSettlement({
@@ -140,8 +119,6 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
-  // change settlement status right from the Sales table — creates the settlement record
-  // if this sale somehow doesn't have one yet (e.g. logged before Settlements existed).
   async function changeSettlementStatus(sale, newStatus) {
     const existing = settlementForSale(sale.id);
     if (existing) {
@@ -167,7 +144,6 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
-  // edit an existing sale's own commission box — recalculates and saves its Net immediately
   async function editSaleCommission(entry, field, value) {
     const updatedEntry = { ...entry, [field]: field === 'commission_value' ? (value === '' ? null : Number(value)) : value };
     const newNet = applyCommission(saleGross(updatedEntry) ?? '', { type: updatedEntry.commission_type, value: updatedEntry.commission_value });
@@ -176,7 +152,6 @@ export default function Sales({ data, reload }) {
     reload();
   }
 
-  // still allow typing Gross or Net directly for a saved sale
   async function editSaleAmount(entry, field, value) {
     const num = value === '' ? null : Number(value);
     if (field === 'gross_amount') {
@@ -189,7 +164,22 @@ export default function Sales({ data, reload }) {
   }
 
   function handleExport() {
-    downloadCsv(sorted, `loma-sales-${todayStr()}.csv`);
+    exportToExcel(
+      sorted,
+      [
+        { key: 'date', label: 'Date' },
+        { key: 'product_name', label: 'Product' },
+        { key: 'size', label: 'Size' },
+        { key: 'qty', label: 'Qty' },
+        { key: (l) => l.sale_type || saleTypeForChannel(l.channel) || '', label: 'Type' },
+        { key: 'channel', label: 'Channel' },
+        { key: 'commission_type', label: 'Commission Type' },
+        { key: 'commission_value', label: 'Commission Value' },
+        { key: (l) => fmt(saleGross(l)) ?? '', label: 'Gross' },
+        { key: (l) => fmt(saleNet(l)) ?? '', label: 'Net' },
+      ],
+      `loma-sales-${todayStr()}.csv`
+    );
     toast('Sales exported — opens directly in Excel.');
   }
 
@@ -337,7 +327,7 @@ export default function Sales({ data, reload }) {
       </div>
 
       <div className="mini-note" style={{ marginBottom: 8 }}>
-        Every sale has its own Commission box below — change the type or value and Net recalculates and saves right away. Gross and Net can also be typed over directly.
+        Every sale has its own Commission box below — change the type or value and Net recalculates and saves right away. Gross and Net can also be typed over directly. Use Edit to change Product/Size/Qty/Channel/Date.
       </div>
       <div className="table-wrap">
         <table className="data-table">
@@ -402,7 +392,10 @@ export default function Sales({ data, reload }) {
                       {SETTLE_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                     </select>
                   </td>
-                  <td><button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button></td>
+                  <td style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
+                    <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                  </td>
                 </tr>
                 );
               })
@@ -418,6 +411,16 @@ export default function Sales({ data, reload }) {
           )}
         </table>
       </div>
+
+      {editId && (
+        <SalesEditModal
+          sale={sorted.find((l) => l.id === editId)}
+          products={products}
+          linkedSettlement={settlementForSale(editId)}
+          onClose={() => setEditId(null)}
+          onSaved={() => { setEditId(null); reload(); }}
+        />
+      )}
     </div>
   );
 }
