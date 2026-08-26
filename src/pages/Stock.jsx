@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { materialTotalIssued, fmt, rupee, todayStr, exportToExcel } from '../lib/calc';
+import { materialTotalIssued, fmt, rupee, todayStr, exportToExcel, filterByBrand } from '../lib/calc';
 import { saveMaterial, saveProduct } from '../lib/api';
 
-export default function Stock({ data, reload }) {
-  const { materials, products, productionLog } = data;
+export default function Stock({ data, reload, brand }) {
+  const materials = filterByBrand(data.materials, brand);
+  const products = filterByBrand(data.products, brand);
+  const productionLog = filterByBrand(data.productionLog, brand);
   const [tab, setTab] = useState('materials');
   const [search, setSearch] = useState('');
 

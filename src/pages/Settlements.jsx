@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel, exportToExcel } from '../lib/calc';
+import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel, exportToExcel, filterByBrand } from '../lib/calc';
 import { addSettlement, updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 const STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
 
-export default function Settlements({ data, reload }) {
+export default function Settlements({ data, reload, brand }) {
   const { toast, confirm } = useUI();
-  const { settlements, products } = data;
+  const settlements = filterByBrand(data.settlements, brand);
+  const products = filterByBrand(data.products, brand);
   const [monthFilter, setMonthFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -46,6 +47,7 @@ export default function Settlements({ data, reload }) {
       settlement_date: fSettleDate || null,
       notes: fNotes.trim(),
       cancel_reason: fStatus === 'Cancelled' ? fNotes.trim() : '',
+      brand,
     });
     toast('Settlement logged.');
     setFProductId(''); setFSize(''); setFQty(1); setFGross(''); setFCommValue(''); setFSettleAmount('');

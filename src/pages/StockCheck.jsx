@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SIZES } from '../lib/calc';
+import { SIZES, filterByBrand } from '../lib/calc';
 
 // Preferred order for the categories you actually use — anything else found in
 // the data (or left blank) just gets its own group appended after these.
@@ -52,8 +52,8 @@ function downloadCsv(groups, minStock, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function StockCheck({ data }) {
-  const { products } = data;
+export default function StockCheck({ data, brand }) {
+  const products = filterByBrand(data.products, brand);
   const [minStock, setMinStock] = useState(2);
   const [search, setSearch] = useState('');
 

@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
-import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel } from '../lib/calc';
+import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel, filterByBrand } from '../lib/calc';
 import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import SalesEditModal from './SalesEditModal';
 
-export default function Sales({ data, reload }) {
+export default function Sales({ data, reload, brand }) {
   const { toast } = useUI();
-  const { products, salesLog, commissions, settlements } = data;
+  const products = filterByBrand(data.products, brand);
+  const salesLog = filterByBrand(data.salesLog, brand);
+  const settlements = filterByBrand(data.settlements, brand);
+  // Channel commission defaults stay shared across both brands (like Expenses) —
+  // the marketplace rate doesn't usually depend on which brand is selling.
+  const { commissions } = data;
   const SETTLE_STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
-  const settlementForSale = (saleId) => (settlements || []).find((s) => s.sale_id === saleId);
+  const settlementForSale = (saleId) => settlements.find((s) => s.sale_id === saleId);
 
   const [monthFilter, setMonthFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -84,6 +89,7 @@ export default function Sales({ data, reload }) {
       commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
       gross_amount: grossNum, net_amount: netNum,
       price: gross === '' ? null : Number(gross) / q,
+      brand,
     };
     await addSale(entry);
     const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
@@ -99,6 +105,7 @@ export default function Sales({ data, reload }) {
       expected_amount: netNum, received_amount: isInstant ? netNum : null,
       status: isInstant ? 'Settled' : 'Pending',
       settlement_date: isInstant ? date : null, notes: '',
+      brand,
     });
 
     toast('Sale logged.');
@@ -131,6 +138,7 @@ export default function Sales({ data, reload }) {
         gross_amount: saleGross(sale), commission_type: sale.commission_type, commission_value: sale.commission_value,
         expected_amount: saleNet(sale), received_amount: null,
         status: newStatus, settlement_date: newStatus === 'Settled' ? todayStr() : null, notes: '',
+        brand: sale.brand || brand,
       });
     }
     toast('Settlement status updated.');

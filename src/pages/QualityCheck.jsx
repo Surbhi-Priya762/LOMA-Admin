@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { todayStr, exportToExcel } from '../lib/calc';
+import { todayStr, exportToExcel, filterByBrand } from '../lib/calc';
 import { deleteQualityCheck } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import QCModal from './QCModal';
 
 const RESULTS = ['Pending', 'Pass', 'Reject', 'Rework'];
 
-export default function QualityCheck({ data, reload }) {
+export default function QualityCheck({ data, reload, brand }) {
   const { toast, confirm } = useUI();
-  const { qualityChecks, products } = data;
+  const qualityChecks = filterByBrand(data.qualityChecks, brand);
+  const products = filterByBrand(data.products, brand);
   const [resultFilter, setResultFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState(null);

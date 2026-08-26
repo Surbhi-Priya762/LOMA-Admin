@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { CATS, materialLineCost, productProductionCost, rupee, fmt, uid } from '../lib/calc';
+import { CATS, materialLineCost, productProductionCost, rupee, fmt, uid, filterByBrand } from '../lib/calc';
 import { saveMaterial, deleteMaterial, addStorePlanExtra, deleteStorePlanExtra } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-export default function StorePlanning({ data, reload }) {
+export default function StorePlanning({ data, reload, brand }) {
   const { toast, confirm } = useUI();
-  const { products, materials, settings, storePlanExtras } = data;
+  const products = filterByBrand(data.products, brand);
+  const materials = filterByBrand(data.materials, brand);
+  const storePlanExtras = filterByBrand(data.storePlanExtras, brand);
+  const { settings } = data;
   const [piecesPerSize, setPiecesPerSize] = useState(5);
   const [newFabricName, setNewFabricName] = useState('');
   const [newFabricPrice, setNewFabricPrice] = useState('');
@@ -53,6 +56,7 @@ export default function StorePlanning({ data, reload }) {
     await saveMaterial({
       id: uid('mat'), name: newFabricName.trim(), category: 'Fabric', unit: 'm',
       price: newFabricPrice === '' ? null : Number(newFabricPrice), stock: null, block: null, reorder_level: null, image: null,
+      brand,
     });
     toast('Fabric added.');
     setNewFabricName(''); setNewFabricPrice('');
@@ -62,7 +66,7 @@ export default function StorePlanning({ data, reload }) {
   async function handleAddExtra() {
     const amt = Number(extraAmount);
     if (!extraName.trim() || !amt) { toast('Enter a name and amount.'); return; }
-    await addStorePlanExtra({ id: uid('extra'), name: extraName.trim(), amount: amt });
+    await addStorePlanExtra({ id: uid('extra'), name: extraName.trim(), amount: amt, brand });
     toast('Added.');
     setExtraName(''); setExtraAmount('');
     reload();

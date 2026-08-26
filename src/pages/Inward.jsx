@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { SIZES, CHANNELS, todayStr, uid, exportToExcel } from '../lib/calc';
+import { SIZES, CHANNELS, todayStr, uid, exportToExcel, filterByBrand } from '../lib/calc';
 import { addInward, deleteInward, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 const SOURCES = [...CHANNELS, 'Customer', 'Vendor'];
 
-export default function Inward({ data, reload }) {
+export default function Inward({ data, reload, brand }) {
   const { toast } = useUI();
-  const { products, inward } = data;
+  const products = filterByBrand(data.products, brand);
+  const inward = filterByBrand(data.inward, brand);
   const [date, setDate] = useState(todayStr());
   const [source, setSource] = useState(SOURCES[0]);
   const [productId, setProductId] = useState('');
@@ -47,6 +48,7 @@ export default function Inward({ data, reload }) {
     const entry = {
       id: uid('inw'), date, source, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: qn, remarks: remarks.trim(),
+      brand,
     };
     await addInward(entry);
 

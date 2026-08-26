@@ -3,6 +3,7 @@ import { UIProvider, useUI } from './context/UIContext';
 import { DataProvider, useData } from './context/DataContext';
 import { backupAll } from './lib/api';
 import Login, { getRole, logout } from './components/Login';
+import BrandGate from './components/BrandGate';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import RawMaterials from './pages/RawMaterials';
@@ -137,17 +138,40 @@ function Shell({ role, onLogout }) {
             {route === 'home' && <Home data={data} setRoute={setRoute} reload={reload} role={role} brand={brand} setBrand={setBrand} />}
             {route === 'products' && <Products data={data} reload={reload} role={role} brand={brand} />}
             {!isViewer && route === 'materials' && <RawMaterials data={data} reload={reload} brand={brand} />}
-            {!isViewer && route === 'stock' && <Stock data={data} reload={reload} />}
-            {!isViewer && route === 'production' && <ProductionLog data={data} reload={reload} />}
-            {!isViewer && route === 'qualitycheck' && <QualityCheck data={data} reload={reload} />}
-            {!isViewer && route === 'inward' && <Inward data={data} reload={reload} />}
-            {!isViewer && route === 'outward' && <Outward data={data} reload={reload} />}
-            {!isViewer && route === 'sales' && <Sales data={data} reload={reload} />}
-            {!isViewer && route === 'settlements' && <Settlements data={data} reload={reload} />}
+
+            {/* Everything below is single-brand-only — Combined isn't a valid view here,
+                it's Home-only. BrandGate shows a nudge instead of mixing both brands. */}
+            {!isViewer && route === 'stock' && (
+              <BrandGate brand={brand}><Stock data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'production' && (
+              <BrandGate brand={brand}><ProductionLog data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'qualitycheck' && (
+              <BrandGate brand={brand}><QualityCheck data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'inward' && (
+              <BrandGate brand={brand}><Inward data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'outward' && (
+              <BrandGate brand={brand}><Outward data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'sales' && (
+              <BrandGate brand={brand}><Sales data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'settlements' && (
+              <BrandGate brand={brand}><Settlements data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
             {!isViewer && route === 'expenses' && <Expenses data={data} reload={reload} />}
-            {!isViewer && route === 'store' && <StorePlanning data={data} reload={reload} />}
-            {!isViewer && route === 'stockcheck' && <StockCheck data={data} />}
-            {!isViewer && route === 'customers' && <CustomerDetails data={data} reload={reload} />}
+            {!isViewer && route === 'store' && (
+              <BrandGate brand={brand}><StorePlanning data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'stockcheck' && (
+              <BrandGate brand={brand}><StockCheck data={data} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'customers' && (
+              <BrandGate brand={brand}><CustomerDetails data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
           </>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel, blankQCChecklist } from '../lib/calc';
+import { SIZES, todayStr, fmt, uid, materialTotalIssued, exportToExcel, blankQCChecklist, filterByBrand } from '../lib/calc';
 import { addProductionLog, updateProductionLog, deleteProductionLog, addQualityCheck, deleteQualityCheckByProductionLog } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import ProductionLogEditModal from './ProductionLogEditModal';
@@ -14,9 +14,12 @@ function daysBetween(a, b) {
   return Math.round((d2 - d1) / 86400000);
 }
 
-export default function ProductionLog({ data, reload }) {
+export default function ProductionLog({ data, reload, brand }) {
   const { toast } = useUI();
-  const { products, productionLog, materials, qualityChecks } = data;
+  const products = filterByBrand(data.products, brand);
+  const productionLog = filterByBrand(data.productionLog, brand);
+  const qualityChecks = filterByBrand(data.qualityChecks, brand);
+  const { materials } = data;
   const [editId, setEditId] = useState(null);
   const [productId, setProductId] = useState('');
   const [size, setSize] = useState('');
@@ -52,6 +55,7 @@ export default function ProductionLog({ data, reload }) {
       id: uid('qc'), production_log_id: entry.id, date: todayStr(),
       product_id: entry.product_id, product_name: entry.product_name, size: entry.size, qty: entry.qty,
       checked_by: '', checklist: blankQCChecklist(), overall_result: 'Pending', rework_instructions: '', passed_date: null,
+      brand: entry.brand || brand,
     });
   }
 
@@ -65,6 +69,7 @@ export default function ProductionLog({ data, reload }) {
       id: uid('log'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: q, status, remarks: remarks.trim(),
       ready_date: status === 'Ready' ? todayStr() : null,
+      brand,
     };
     await addProductionLog(entry);
 

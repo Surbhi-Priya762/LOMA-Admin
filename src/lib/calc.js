@@ -147,6 +147,14 @@ export function labourFormulaText(p, dailyBudget) {
   return "Fill in Tailor output (and the daily budget) to calculate this automatically, or type a labour cost directly.";
 }
 
+// Stage 2 helper — used by every single-brand-only page (Stock, Production Log,
+// Quality Check, Inward, Outward, Sales, Settlements, Store Planning, Stock Check,
+// Customer Details). Rows saved before the brand split default to 'Loma'.
+export function filterByBrand(rows, brand) {
+  if (!rows) return [];
+  return rows.filter((r) => (r.brand || 'Loma') === brand);
+}
+
 export function productTotalStock(p) {
   return (p.sizes || []).reduce((a, s) => a + (Number(s.stock) || 0), 0);
 }

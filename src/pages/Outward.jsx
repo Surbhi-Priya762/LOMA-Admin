@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { SIZES, todayStr, uid, exportToExcel } from '../lib/calc';
+import { SIZES, todayStr, uid, exportToExcel, filterByBrand } from '../lib/calc';
 import { addOutward, deleteOutward, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-export default function Outward({ data, reload }) {
+export default function Outward({ data, reload, brand }) {
   const { toast } = useUI();
-  const { products, outward } = data;
+  const products = filterByBrand(data.products, brand);
+  const outward = filterByBrand(data.outward, brand);
   const [date, setDate] = useState(todayStr());
   const [productId, setProductId] = useState('');
   const [size, setSize] = useState('');
@@ -18,7 +19,7 @@ export default function Outward({ data, reload }) {
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
 
   const q = search.toLowerCase();
-  const filtered = (outward || []).filter((o) => !q || (o.product_name || '').toLowerCase().includes(q) || (o.person_name || '').toLowerCase().includes(q));
+  const filtered = outward.filter((o) => !q || (o.product_name || '').toLowerCase().includes(q) || (o.person_name || '').toLowerCase().includes(q));
   const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const totalUnits = filtered.reduce((a, o) => a + (Number(o.qty) || 0), 0);
 
@@ -47,6 +48,7 @@ export default function Outward({ data, reload }) {
     const entry = {
       id: uid('out'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
       size, qty: qn, person_name: personName.trim(), notes: notes.trim(),
+      brand,
     };
     await addOutward(entry);
 

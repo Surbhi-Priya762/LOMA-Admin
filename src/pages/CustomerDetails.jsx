@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { todayStr, uid, exportToExcel } from '../lib/calc';
+import { todayStr, uid, exportToExcel, filterByBrand } from '../lib/calc';
 import { addCustomerDetail, deleteCustomerDetail } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 const SOURCES = ['Popup', 'Shopify', 'Our Store / Studio', 'Other'];
 
-export default function CustomerDetails({ data, reload }) {
+export default function CustomerDetails({ data, reload, brand }) {
   const { toast, confirm } = useUI();
-  const { customerDetails } = data;
+  const customerDetails = filterByBrand(data.customerDetails, brand);
   const [sourceFilter, setSourceFilter] = useState('All');
   const [search, setSearch] = useState('');
 
@@ -21,7 +21,7 @@ export default function CustomerDetails({ data, reload }) {
   const [notes, setNotes] = useState('');
 
   const q = search.toLowerCase();
-  const filtered = (customerDetails || []).filter((c) => {
+  const filtered = customerDetails.filter((c) => {
     if (sourceFilter !== 'All' && c.source !== sourceFilter) return false;
     if (q && !(c.name || '').toLowerCase().includes(q) && !(c.phone || '').toLowerCase().includes(q) && !(c.email || '').toLowerCase().includes(q)) return false;
     return true;
@@ -33,6 +33,7 @@ export default function CustomerDetails({ data, reload }) {
     await addCustomerDetail({
       id: uid('cust'), date, name: name.trim(), phone: phone.trim(), email: email.trim(),
       address: address.trim(), source, product_bought: productBought.trim(), notes: notes.trim(),
+      brand,
     });
     toast('Customer added.');
     setName(''); setPhone(''); setEmail(''); setAddress(''); setProductBought(''); setNotes('');
