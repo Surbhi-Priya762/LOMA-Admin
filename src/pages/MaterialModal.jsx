@@ -1,17 +1,16 @@
 import { useRef, useState } from 'react';
-import { CATS, uid } from '../lib/calc';
-import { materialUsedByProducts } from '../lib/calc';
+import { CATS, BRANDS, uid, materialUsedByProducts } from '../lib/calc';
 import { saveMaterial, deleteMaterial, saveProduct, recordLastUpdate } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-function blankMaterial(defaultCategory) {
-  return { id: uid('mat'), name: '', category: defaultCategory || 'Fabric', unit: 'm', price: null, stock: null, block: null, reorder_level: null, image: null };
+function blankMaterial(defaultCategory, brand) {
+  return { id: uid('mat'), name: '', category: defaultCategory || 'Fabric', unit: 'm', price: null, stock: null, block: null, reorder_level: null, image: null, brand: brand || 'Loma' };
 }
 
-export default function MaterialModal({ material, products, defaultCategory, onClose, onSaved, onDeleted }) {
+export default function MaterialModal({ material, products, defaultCategory, defaultBrand, onClose, onSaved, onDeleted }) {
   const { toast, confirm, promptName } = useUI();
   const isNew = material == null;
-  const [draft, setDraft] = useState(() => (isNew ? blankMaterial(defaultCategory) : { ...material }));
+  const [draft, setDraft] = useState(() => (isNew ? blankMaterial(defaultCategory, defaultBrand) : { ...material }));
   const fileInputRef = useRef(null);
   const [pendingImage, setPendingImage] = useState(null);
 
@@ -63,7 +62,7 @@ export default function MaterialModal({ material, products, defaultCategory, onC
     delete updated.updated_at;
     await saveProduct(updated);
     toast(`Added to ${p.name}.`);
-    onSaved(); // reload parent so usedBy list refreshes; modal will re-derive from fresh data on next open
+    onSaved();
   }
 
   async function removeFromProduct(productId) {
@@ -103,6 +102,12 @@ export default function MaterialModal({ material, products, defaultCategory, onC
               <label>Category</label>
               <select value={draft.category} onChange={(e) => set('category', e.target.value)}>
                 {CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Brand</label>
+              <select value={draft.brand || 'Loma'} onChange={(e) => set('brand', e.target.value)}>
+                {BRANDS.map((b) => <option key={b}>{b}</option>)}
               </select>
             </div>
           </div>

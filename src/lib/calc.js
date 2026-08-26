@@ -1,4 +1,5 @@
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const BRANDS = ['Loma', 'Sauca'];
 export const QC_SECTIONS = [
   { section: 'Fabric & Cutting', items: [
     'Fabric matches approved swatch/shade for this style',

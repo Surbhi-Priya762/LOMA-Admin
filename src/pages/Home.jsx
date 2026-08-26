@@ -3,16 +3,19 @@ import { rupee, todayStr, formatTimestamp, productProductionCost, materialTotalI
 import { updateSettings, recordLastUpdate } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-export default function Home({ data, setRoute, reload, role }) {
+export default function Home({ data, setRoute, reload, role, brand, setBrand }) {
   const { toast, promptName } = useUI();
   const { products, materials, productionLog, salesLog, settings, lastUpdate, expenses, settlements } = data;
   const [budgetInput, setBudgetInput] = useState(settings.daily_labour_budget ?? '');
 
   const today = todayStr();
   const currentMonth = today.slice(0, 7);
-  const [filterMode, setFilterMode] = useState('month'); // 'month' | 'date'
+  const [filterMode, setFilterMode] = useState('month');
   const [filterMonth, setFilterMonth] = useState(currentMonth);
   const [filterDate, setFilterDate] = useState(today);
+
+  const productsForBrand = brand === 'Combined' ? products : products.filter((p) => (p.brand || 'Loma') === brand);
+  const materialsForBrand = brand === 'Combined' ? materials : materials.filter((m) => (m.brand || 'Loma') === brand);
 
   const availableMonths = useMemo(() => {
     const set = new Set();
@@ -30,8 +33,10 @@ export default function Home({ data, setRoute, reload, role }) {
   }
   const periodLabel = filterMode === 'date' ? filterDate : filterMonth;
 
-  const totalFabrics = materials.filter((m) => m.category === 'Fabric').length;
+  const totalFabrics = materialsForBrand.filter((m) => m.category === 'Fabric').length;
 
+  // Sales/Production/Settlements don't have a brand field yet (Stage 2) — these numbers
+  // are combined across both brands until that's built.
   const periodProd = productionLog.filter((l) => matchesPeriod(l.date)).reduce((a, l) => a + (Number(l.qty) || 0), 0);
   const periodSales = salesLog.filter((l) => matchesPeriod(l.date));
   const periodUnits = periodSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
@@ -44,8 +49,27 @@ export default function Home({ data, setRoute, reload, role }) {
     .filter((l) => (l.sale_type || saleTypeForChannel(l.channel)) === 'Offline')
     .reduce((a, l) => a + (saleNet(l) || 0), 0);
 
+  // Expenses are shared/common across both brands by design.
   const periodExpenses = (expenses || []).filter((e) => matchesPeriod(e.date));
   const periodExpenseTotal = periodExpenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+
+  const lastExpense = [...(expenses || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const daysSinceExpense = lastExpense ? Math.round((new Date(today) - new Date(lastExpense.date)) / 86400000) : null;
+  const expenseStale = daysSinceExpense == null || daysSinceExpense >= 2;
+
+  const reorderCount = useMemo(() => {
+    return materialsForBrand.filter((m) => {
+      if (m.stock == null) return false;
+      const used = materialTotalIssued(m, products, productionLog);
+      const current = Number(m.stock) - used;
+      return m.reorder_level != null && current <= Number(m.reorder_level);
+    }).length;
+  }, [materialsForBrand, products, productionLog]);
+
+  const missingCost = productsForBrand.filter((p) => productProductionCost(p, settings.daily_labour_budget) == null).length;
+
+  const recentProd = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
+  const recentSales = [...salesLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
 
   const activeSettlements = (settlements || []).filter((s) => (s.status || 'Pending') !== 'Cancelled');
   const settledList = activeSettlements.filter((s) => s.status === 'Settled');
@@ -54,24 +78,6 @@ export default function Home({ data, setRoute, reload, role }) {
   const pendingList = activeSettlements.filter((s) => (s.status || 'Pending') !== 'Settled');
   const pendingCount = pendingList.length;
   const pendingTotal = pendingList.reduce((a, s) => a + ((Number(s.expected_amount) || 0) - (Number(s.received_amount) || 0)), 0);
-
-  const lastExpense = [...(expenses || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-  const daysSinceExpense = lastExpense ? Math.round((new Date(today) - new Date(lastExpense.date)) / 86400000) : null;
-  const expenseStale = daysSinceExpense == null || daysSinceExpense >= 2;
-
-  const reorderCount = useMemo(() => {
-    return materials.filter((m) => {
-      if (m.stock == null) return false;
-      const used = materialTotalIssued(m, products, productionLog);
-      const current = Number(m.stock) - used;
-      return m.reorder_level != null && current <= Number(m.reorder_level);
-    }).length;
-  }, [materials, products, productionLog]);
-
-  const missingCost = products.filter((p) => productProductionCost(p, settings.daily_labour_budget) == null).length;
-
-  const recentProd = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
-  const recentSales = [...salesLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
 
   async function saveBudget() {
     const newBudget = budgetInput === '' ? null : Number(budgetInput);
@@ -105,6 +111,21 @@ export default function Home({ data, setRoute, reload, role }) {
               <span>Pending</span><strong style={{ color: 'var(--rust)' }}>{pendingCount} · {rupee(pendingTotal)}</strong>
             </div>
             <div className="link-btn" style={{ marginTop: 8, display: 'inline-block' }}>Go to Settlements →</div>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 18, borderColor: 'var(--brass)' }}>
+        <p className="section-title">Brand</p>
+        <div className="mini-note" style={{ marginBottom: 10 }}>Pick which brand's products, stock, and dashboard you want to see. Expenses and labour budget stay shared across both.</div>
+        <div className="tabs-row" style={{ marginBottom: 0 }}>
+          {['Loma', 'Sauca', 'Combined'].map((b) => (
+            <div key={b} className={`pill ${brand === b ? 'active' : ''}`} onClick={() => setBrand(b)}>{b}</div>
+          ))}
+        </div>
+        {brand !== 'Combined' && (
+          <div className="mini-note" style={{ marginTop: 8 }}>
+            Sales, Production Log, and Settlements below still show combined numbers across both brands for now — that split is coming next.
           </div>
         )}
       </div>
@@ -154,7 +175,7 @@ export default function Home({ data, setRoute, reload, role }) {
 
       {role !== 'viewer' && (
         <div className="card" style={{ marginBottom: 18, borderColor: expenseStale ? 'var(--rust)' : 'var(--line)' }}>
-          <p className="section-title">Expenses</p>
+          <p className="section-title">Expenses (shared — both brands)</p>
           <div style={{ fontSize: 13.5 }}>
             {lastExpense ? (
               <>
@@ -174,9 +195,9 @@ export default function Home({ data, setRoute, reload, role }) {
 
       {role !== 'viewer' && (
         <div className="card" style={{ marginBottom: 18 }}>
-          <p className="section-title">Daily labour budget</p>
+          <p className="section-title">Daily labour budget (shared — both brands)</p>
           <div className="mini-note" style={{ marginBottom: 8 }}>
-            Shared across every product's labour cost — change it here as your tailor headcount or wages change,
+            Shared across every product's labour cost, both brands — change it here as your tailor headcount or wages change,
             and every product recalculates.
           </div>
           <div className="field-row" style={{ alignItems: 'flex-end' }}>
@@ -192,8 +213,8 @@ export default function Home({ data, setRoute, reload, role }) {
       )}
 
       <div className="grid-cards">
-        <Stat num={products.length} label="Products" />
-        <Stat num={totalFabrics} label="Fabrics tracked" />
+        <Stat num={productsForBrand.length} label={`Products${brand !== 'Combined' ? ' — ' + brand : ''}`} />
+        <Stat num={totalFabrics} label={`Fabrics tracked${brand !== 'Combined' ? ' — ' + brand : ''}`} />
         <Stat num={periodProd} label={`Pieces logged — ${periodLabel}`} />
         <Stat num={periodUnits} label={`Units sold — ${periodLabel}`} />
         {role !== 'viewer' && <Stat num={rupee(periodGross)} label={`Gross sale — ${periodLabel}`} />}
@@ -201,8 +222,8 @@ export default function Home({ data, setRoute, reload, role }) {
         {role !== 'viewer' && <Stat num={rupee(periodOnlineNet)} label="Online sales (Myntra, Nykaa, Shopify, Other)" />}
         {role !== 'viewer' && <Stat num={rupee(periodOfflineNet)} label="Offline sales (Coyu Store, Popup, Our Store)" />}
         {role !== 'viewer' && <Stat num={rupee(periodExpenseTotal)} label={`Expenses — ${periodLabel}`} />}
-        <Stat num={reorderCount} label="Materials to reorder" flag={reorderCount > 0 ? 'Check Stock page' : null} />
-        {role !== 'viewer' && <Stat num={missingCost} label="Products missing cost data" flag={missingCost > 0 ? 'Fill in Products page' : null} />}
+        <Stat num={reorderCount} label={`Materials to reorder${brand !== 'Combined' ? ' — ' + brand : ''}`} flag={reorderCount > 0 ? 'Check Stock page' : null} />
+        {role !== 'viewer' && <Stat num={missingCost} label={`Products missing cost data${brand !== 'Combined' ? ' — ' + brand : ''}`} flag={missingCost > 0 ? 'Fill in Products page' : null} />}
       </div>
 
       {role !== 'viewer' && (

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  CATS, CAT_UNITS, SIZES, QTY_BASED_CATS,
+  CATS, CAT_UNITS, SIZES, QTY_BASED_CATS, BRANDS,
   materialLineCost, productMaterialSubtotal, productProductionCost,
   productFinalCost, productTargetMRP, productLabourCost, labourFormulaText,
   rupee, uid,
@@ -8,8 +8,8 @@ import {
 import { saveProduct, deleteProduct, recordLastUpdate, updateSettings } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-function blankProduct() {
-  const p = { id: uid('prod'), name: '', sku_prefix: '', image: '', type: '', sizes: SIZES.map((s) => ({ size: s, stock: 0 })) };
+function blankProduct(brand) {
+  const p = { id: uid('prod'), name: '', sku_prefix: '', image: '', type: '', brand: brand || 'Loma', sizes: SIZES.map((s) => ({ size: s, stock: 0 })) };
   CATS.forEach((cat) => {
     const k = cat.toLowerCase();
     p[`${k}_name`] = null;
@@ -19,10 +19,10 @@ function blankProduct() {
   return p;
 }
 
-export default function ProductModal({ product, materials, dailyBudget, onClose, onSaved, onDeleted }) {
+export default function ProductModal({ product, materials, dailyBudget, defaultBrand, onClose, onSaved, onDeleted }) {
   const { toast, confirm, promptName } = useUI();
   const isNew = product == null;
-  const [draft, setDraft] = useState(() => (isNew ? blankProduct() : { ...product, sizes: product.sizes || SIZES.map((s) => ({ size: s, stock: 0 })) }));
+  const [draft, setDraft] = useState(() => (isNew ? blankProduct(defaultBrand) : { ...product, sizes: product.sizes || SIZES.map((s) => ({ size: s, stock: 0 })) }));
   const [liveBudget, setLiveBudget] = useState(dailyBudget ?? '');
 
   const set = (field, value) => setDraft((d) => ({ ...d, [field]: value }));
@@ -74,9 +74,17 @@ export default function ProductModal({ product, materials, dailyBudget, onClose,
         <div className="modal-body">
           <div className="two-col">
             <div>
-              <div className="field">
-                <label>Product name</label>
-                <input value={draft.name} onChange={(e) => set('name', e.target.value)} />
+              <div className="field-row">
+                <div className="field" style={{ flex: 1.5 }}>
+                  <label>Product name</label>
+                  <input value={draft.name} onChange={(e) => set('name', e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>Brand</label>
+                  <select value={draft.brand || 'Loma'} onChange={(e) => set('brand', e.target.value)}>
+                    {BRANDS.map((b) => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="field-row">
                 <div className="field">
@@ -100,22 +108,22 @@ export default function ProductModal({ product, materials, dailyBudget, onClose,
                 const unit = CAT_UNITS[cat];
                 const isQtyBased = QTY_BASED_CATS.includes(key);
                 const opts = materials.filter((m) => m.category === cat);
+                let qtyVal = draft[`${key}_qty`];
+                if (qtyVal == null && key === 'fabric' && draft.fabric_qty_m != null) qtyVal = draft.fabric_qty_m;
                 return (
                   <div className="field-row" style={{ alignItems: 'flex-end' }} key={cat}>
                     <div className="field" style={{ flex: 1.3 }}>
                       <label>{cat}</label>
                       <select value={draft[`${key}_name`] || ''} onChange={(e) => set(`${key}_name`, e.target.value || null)}>
                         <option value="">— none / unknown yet —</option>
-                        {opts.map((m) => (
-                          <option value={m.name} key={m.id}>{m.name}</option>
-                        ))}
+                        {opts.map((m) => <option value={m.name} key={m.id}>{m.name}</option>)}
                       </select>
                     </div>
                     <div className="field">
                       <label>Qty ({unit}){!isQtyBased ? ' — for reference' : ''}</label>
                       <input
                         type="number" step="any"
-                        value={draft[`${key}_qty`] ?? ''}
+                        value={qtyVal ?? ''}
                         onChange={(e) => set(`${key}_qty`, e.target.value === '' ? null : Number(e.target.value))}
                       />
                     </div>
@@ -214,7 +222,7 @@ export default function ProductModal({ product, materials, dailyBudget, onClose,
                 ))}
               </div>
               <div className="mini-note">
-                Stock updates automatically when you log production (Ready) or a sale — you can also correct it here directly.
+                Stock updates automatically when Quality Check passes a batch, or you can correct it here directly.
               </div>
             </div>
           </div>

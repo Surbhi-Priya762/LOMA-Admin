@@ -3,21 +3,23 @@ import { productTargetMRP, productProductionCost, productTotalStock, rupee, toda
 import ProductModal from './ProductModal';
 import ProductViewModal from './ProductViewModal';
 
-export default function Products({ data, reload, role }) {
-  const { products, materials, settings } = data;
+export default function Products({ data, reload, role, brand }) {
+  const { materials, settings } = data;
   const isViewer = role === 'viewer';
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState(undefined); // undefined = closed, null = new, id = edit
 
+  const byBrand = brand === 'Combined' ? data.products : data.products.filter((p) => (p.brand || 'Loma') === brand);
   const q = search.toLowerCase();
-  const list = products.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q));
+  const list = byBrand.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q));
 
-  const openProduct = openId === undefined || openId === null ? null : products.find((p) => p.id === openId);
+  const openProduct = openId === undefined || openId === null ? null : data.products.find((p) => p.id === openId);
 
   function handleExport() {
     exportToExcel(
       list,
       [
+        { key: 'brand', label: 'Brand' },
         { key: 'name', label: 'Name' },
         { key: 'sku_prefix', label: 'SKU' },
         { key: 'type', label: 'Type' },
@@ -35,9 +37,9 @@ export default function Products({ data, reload, role }) {
     <div>
       <div className="topline">
         <div>
-          <h1 className="page-title">Products</h1>
+          <h1 className="page-title">Products {brand !== 'Combined' ? `— ${brand}` : ''}</h1>
           <div className="page-sub">
-            {products.length} products{isViewer ? '' : ' — click any card to view or edit its full recipe & costing'}
+            {list.length} products{isViewer ? '' : ' — click any card to view or edit its full recipe & costing'}
           </div>
         </div>
         <div className="toolbar">
@@ -64,7 +66,7 @@ export default function Products({ data, reload, role }) {
                 )}
                 <div className="prod-body">
                   <div className="prod-name">{p.name}</div>
-                  <div className="prod-sku">{p.sku_prefix || '—'}</div>
+                  <div className="prod-sku">{p.sku_prefix || '—'} {brand === 'Combined' && <span className="tag" style={{ marginLeft: 4 }}>{p.brand || 'Loma'}</span>}</div>
                   {!isViewer && (
                     <div className="prod-price-row">
                       <span className="prod-mrp">{mrp != null ? rupee(mrp) : '—'}</span>
@@ -86,8 +88,9 @@ export default function Products({ data, reload, role }) {
       {openId !== undefined && !isViewer && (
         <ProductModal
           product={openProduct}
-          materials={materials}
+          materials={materials.filter((m) => (m.brand || 'Loma') === (openProduct ? (openProduct.brand || 'Loma') : (brand === 'Combined' ? 'Loma' : brand)))}
           dailyBudget={settings.daily_labour_budget}
+          defaultBrand={brand === 'Combined' ? 'Loma' : brand}
           onClose={() => setOpenId(undefined)}
           onSaved={() => { setOpenId(undefined); reload(); }}
           onDeleted={() => { setOpenId(undefined); reload(); }}

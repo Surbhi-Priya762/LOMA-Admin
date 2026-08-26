@@ -2,18 +2,20 @@ import { useState } from 'react';
 import { CATS, materialUsedByProducts, todayStr, exportToExcel } from '../lib/calc';
 import MaterialModal from './MaterialModal';
 
-export default function RawMaterials({ data, reload }) {
-  const { materials, products } = data;
+export default function RawMaterials({ data, reload, brand }) {
+  const { products } = data;
   const [catFilter, setCatFilter] = useState('All');
   const [openId, setOpenId] = useState(undefined);
 
-  const list = catFilter === 'All' ? materials : materials.filter((m) => m.category === catFilter);
-  const openMaterial = openId === undefined || openId === null ? null : materials.find((m) => m.id === openId);
+  const byBrand = brand === 'Combined' ? data.materials : data.materials.filter((m) => (m.brand || 'Loma') === brand);
+  const list = catFilter === 'All' ? byBrand : byBrand.filter((m) => m.category === catFilter);
+  const openMaterial = openId === undefined || openId === null ? null : data.materials.find((m) => m.id === openId);
 
   function handleExport() {
     exportToExcel(
       list,
       [
+        { key: 'brand', label: 'Brand' },
         { key: 'name', label: 'Name' },
         { key: 'category', label: 'Category' },
         { key: 'unit', label: 'Unit' },
@@ -31,8 +33,8 @@ export default function RawMaterials({ data, reload }) {
     <div>
       <div className="topline">
         <div>
-          <h1 className="page-title">Raw Materials</h1>
-          <div className="page-sub">{materials.length} materials — fabric, button, thread, fusing, zip, hook, elastic &amp; lining, all in one place</div>
+          <h1 className="page-title">Raw Materials {brand !== 'Combined' ? `— ${brand}` : ''}</h1>
+          <div className="page-sub">{list.length} materials — fabric, button, thread, fusing, zip, hook, elastic &amp; lining, all in one place</div>
         </div>
         <div className="toolbar">
           <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
@@ -74,6 +76,7 @@ export default function RawMaterials({ data, reload }) {
           material={openMaterial}
           products={products}
           defaultCategory={catFilter === 'All' ? 'Fabric' : catFilter}
+          defaultBrand={brand === 'Combined' ? 'Loma' : brand}
           onClose={() => setOpenId(undefined)}
           onSaved={() => { setOpenId(undefined); reload(); }}
           onDeleted={() => { setOpenId(undefined); reload(); }}

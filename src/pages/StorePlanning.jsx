@@ -14,8 +14,6 @@ export default function StorePlanning({ data, reload }) {
 
   const pps = Number(piecesPerSize) || 0;
   const fabrics = materials.filter((m) => m.category === 'Fabric');
-  const assignedProductIds = new Set(products.filter((p) => p.fabric_name).map((p) => p.id));
-  const unassigned = products.filter((p) => !p.fabric_name);
 
   function stylesFor(fabricName) {
     return products.filter((p) => p.fabric_name === fabricName);
@@ -87,6 +85,9 @@ export default function StorePlanning({ data, reload }) {
   const extrasTotal = (storePlanExtras || []).reduce((a, e) => a + (Number(e.amount) || 0), 0);
   const grandTotal = fabricTotals.reduce((a, f) => a + f.costTotal, 0) + extrasTotal;
   const totalPiecesAll = products.reduce((a, p) => a + pps * ((p.sizes || []).length || 6), 0);
+
+  const assignedProductIds = new Set(products.filter((p) => p.fabric_name).map((p) => p.id));
+  const unassigned = products.filter((p) => !assignedProductIds.has(p.id));
 
   return (
     <div>

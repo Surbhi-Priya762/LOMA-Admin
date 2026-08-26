@@ -4,8 +4,8 @@ const UIContext = createContext(null);
 
 export function UIProvider({ children }) {
   const [toasts, setToasts] = useState([]);
-  const [confirmState, setConfirmState] = useState(null); // { message, yesLabel, resolve }
-  const [nameState, setNameState] = useState(null); // { description, resolve }
+  const [confirmState, setConfirmState] = useState(null);
+  const [nameState, setNameState] = useState(null);
 
   const toast = useCallback((msg) => {
     const id = Math.random().toString(36).slice(2);

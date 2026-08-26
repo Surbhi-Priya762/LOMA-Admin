@@ -8,15 +8,15 @@ import Products from './pages/Products';
 import RawMaterials from './pages/RawMaterials';
 import Stock from './pages/Stock';
 import ProductionLog from './pages/ProductionLog';
+import QualityCheck from './pages/QualityCheck';
 import Sales from './pages/Sales';
+import Settlements from './pages/Settlements';
 import Expenses from './pages/Expenses';
 import Inward from './pages/Inward';
 import Outward from './pages/Outward';
 import StorePlanning from './pages/StorePlanning';
 import StockCheck from './pages/StockCheck';
-import Settlements from './pages/Settlements';
 import CustomerDetails from './pages/CustomerDetails';
-import QualityCheck from './pages/QualityCheck';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '◆' },
@@ -41,6 +41,7 @@ function todayStr() {
 
 function Shell({ role, onLogout }) {
   const [route, setRoute] = useState('home');
+  const [brand, setBrand] = useState('Loma'); // 'Loma' | 'Sauca' | 'Combined'
   const { data, error, reload } = useData();
   const { toast } = useUI();
   const [backingUp, setBackingUp] = useState(false);
@@ -78,6 +79,24 @@ function Shell({ role, onLogout }) {
             <div className="brand-sub">Production Studio {isViewer ? '· View only' : ''}</div>
           </div>
         </div>
+
+        <div style={{ display: 'flex', gap: 4, padding: '0 4px 14px', borderBottom: '1px solid rgba(255,255,255,.15)', marginBottom: 12 }}>
+          {['Loma', 'Sauca', 'Combined'].map((b) => (
+            <button
+              key={b}
+              onClick={() => setBrand(b)}
+              style={{
+                flex: 1, fontSize: 10.5, padding: '6px 4px', borderRadius: 2, border: 'none', cursor: 'pointer',
+                fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase', letterSpacing: '.02em', fontWeight: 600,
+                background: brand === b ? 'var(--brass)' : 'rgba(255,255,255,.08)',
+                color: brand === b ? '#26241e' : '#cbd5e1',
+              }}
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+
         {navItems.map((n) => (
           <button
             key={n.id}
@@ -115,9 +134,9 @@ function Shell({ role, onLogout }) {
         )}
         {data && (
           <>
-            {route === 'home' && <Home data={data} setRoute={setRoute} reload={reload} role={role} />}
-            {route === 'products' && <Products data={data} reload={reload} role={role} />}
-            {!isViewer && route === 'materials' && <RawMaterials data={data} reload={reload} />}
+            {route === 'home' && <Home data={data} setRoute={setRoute} reload={reload} role={role} brand={brand} setBrand={setBrand} />}
+            {route === 'products' && <Products data={data} reload={reload} role={role} brand={brand} />}
+            {!isViewer && route === 'materials' && <RawMaterials data={data} reload={reload} brand={brand} />}
             {!isViewer && route === 'stock' && <Stock data={data} reload={reload} />}
             {!isViewer && route === 'production' && <ProductionLog data={data} reload={reload} />}
             {!isViewer && route === 'qualitycheck' && <QualityCheck data={data} reload={reload} />}
