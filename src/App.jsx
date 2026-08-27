@@ -136,8 +136,12 @@ function Shell({ role, onLogout }) {
         {data && (
           <>
             {route === 'home' && <Home data={data} setRoute={setRoute} reload={reload} role={role} brand={brand} setBrand={setBrand} />}
-            {route === 'products' && <Products data={data} reload={reload} role={role} brand={brand} />}
-            {!isViewer && route === 'materials' && <RawMaterials data={data} reload={reload} brand={brand} />}
+            {route === 'products' && (
+              <BrandGate brand={brand}><Products data={data} reload={reload} role={role} brand={brand} /></BrandGate>
+            )}
+            {!isViewer && route === 'materials' && (
+              <BrandGate brand={brand}><RawMaterials data={data} reload={reload} brand={brand} /></BrandGate>
+            )}
 
             {/* Everything below is single-brand-only — Combined isn't a valid view here,
                 it's Home-only. BrandGate shows a nudge instead of mixing both brands. */}

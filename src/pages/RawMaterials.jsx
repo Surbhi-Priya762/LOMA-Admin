@@ -7,7 +7,7 @@ export default function RawMaterials({ data, reload, brand }) {
   const [catFilter, setCatFilter] = useState('All');
   const [openId, setOpenId] = useState(undefined);
 
-  const byBrand = brand === 'Combined' ? data.materials : data.materials.filter((m) => (m.brand || 'Loma') === brand);
+  const byBrand = data.materials.filter((m) => (m.brand || 'Loma') === brand);
   const list = catFilter === 'All' ? byBrand : byBrand.filter((m) => m.category === catFilter);
   const openMaterial = openId === undefined || openId === null ? null : data.materials.find((m) => m.id === openId);
 
@@ -33,7 +33,7 @@ export default function RawMaterials({ data, reload, brand }) {
     <div>
       <div className="topline">
         <div>
-          <h1 className="page-title">Raw Materials {brand !== 'Combined' ? `— ${brand}` : ''}</h1>
+          <h1 className="page-title">Raw Materials — {brand}</h1>
           <div className="page-sub">{list.length} materials — fabric, button, thread, fusing, zip, hook, elastic &amp; lining, all in one place</div>
         </div>
         <div className="toolbar">
@@ -76,7 +76,7 @@ export default function RawMaterials({ data, reload, brand }) {
           material={openMaterial}
           products={products}
           defaultCategory={catFilter === 'All' ? 'Fabric' : catFilter}
-          defaultBrand={brand === 'Combined' ? 'Loma' : brand}
+          defaultBrand={brand}
           onClose={() => setOpenId(undefined)}
           onSaved={() => { setOpenId(undefined); reload(); }}
           onDeleted={() => { setOpenId(undefined); reload(); }}

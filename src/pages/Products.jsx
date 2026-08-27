@@ -9,7 +9,7 @@ export default function Products({ data, reload, role, brand }) {
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState(undefined); // undefined = closed, null = new, id = edit
 
-  const byBrand = brand === 'Combined' ? data.products : data.products.filter((p) => (p.brand || 'Loma') === brand);
+  const byBrand = data.products.filter((p) => (p.brand || 'Loma') === brand);
   const q = search.toLowerCase();
   const list = byBrand.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q));
 
@@ -37,7 +37,7 @@ export default function Products({ data, reload, role, brand }) {
     <div>
       <div className="topline">
         <div>
-          <h1 className="page-title">Products {brand !== 'Combined' ? `— ${brand}` : ''}</h1>
+          <h1 className="page-title">Products — {brand}</h1>
           <div className="page-sub">
             {list.length} products{isViewer ? '' : ' — click any card to view or edit its full recipe & costing'}
           </div>
@@ -66,7 +66,7 @@ export default function Products({ data, reload, role, brand }) {
                 )}
                 <div className="prod-body">
                   <div className="prod-name">{p.name}</div>
-                  <div className="prod-sku">{p.sku_prefix || '—'} {brand === 'Combined' && <span className="tag" style={{ marginLeft: 4 }}>{p.brand || 'Loma'}</span>}</div>
+                  <div className="prod-sku">{p.sku_prefix || '—'}</div>
                   {!isViewer && (
                     <div className="prod-price-row">
                       <span className="prod-mrp">{mrp != null ? rupee(mrp) : '—'}</span>
@@ -88,9 +88,9 @@ export default function Products({ data, reload, role, brand }) {
       {openId !== undefined && !isViewer && (
         <ProductModal
           product={openProduct}
-          materials={materials.filter((m) => (m.brand || 'Loma') === (openProduct ? (openProduct.brand || 'Loma') : (brand === 'Combined' ? 'Loma' : brand)))}
+          materials={materials.filter((m) => (m.brand || 'Loma') === (openProduct ? (openProduct.brand || 'Loma') : brand))}
           dailyBudget={settings.daily_labour_budget}
-          defaultBrand={brand === 'Combined' ? 'Loma' : brand}
+          defaultBrand={brand}
           onClose={() => setOpenId(undefined)}
           onSaved={() => { setOpenId(undefined); reload(); }}
           onDeleted={() => { setOpenId(undefined); reload(); }}
