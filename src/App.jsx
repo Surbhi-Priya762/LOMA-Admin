@@ -76,8 +76,8 @@ function Shell({ role, onLogout }) {
         <div className="brand">
           <div className="brand-mark" />
           <div>
-            <div className="brand-title">Lõma</div>
-            <div className="brand-sub">Production Studio {isViewer ? '· View only' : ''}</div>
+            <div className="brand-title">Sauca Designs LLP</div>
+            <div className="brand-sub">Admin Portal {isViewer ? '· View only' : ''}</div>
           </div>
         </div>
 

@@ -73,14 +73,58 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
 
       <div className="card" style={{ marginBottom: 18, borderColor: 'var(--brass)' }}>
         <p className="section-title">Brand</p>
-        <div className="mini-note" style={{ marginBottom: 10 }}>Pick which brand's products, stock, and dashboard you want to see. Expenses and labour budget stay shared across both.</div>
-        <div className="tabs-row" style={{ marginBottom: 0 }}>
-          {['Loma', 'Sauca', 'Combined'].map((b) => (
-            <div key={b} className={`pill ${brand === b ? 'active' : ''}`} onClick={() => setBrand(b)}>{b}</div>
+        <div className="mini-note" style={{ marginBottom: 14 }}>Pick which brand's products, stock, and dashboard you want to see. Expenses and labour budget stay shared across both.</div>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {['Loma', 'Sauca'].map((b) => (
+            <div
+              key={b}
+              onClick={() => setBrand(b)}
+              style={{
+                width: 140,
+                height: 100,
+                borderRadius: 10,
+                border: `2px solid ${brand === b ? 'var(--brass)' : 'var(--line)'}`,
+                background: brand === b ? 'var(--brass)' : 'transparent',
+                color: brand === b ? '#26241e' : 'inherit',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: 17,
+                letterSpacing: 0.5,
+                cursor: 'pointer',
+                transition: 'all .12s ease',
+              }}
+            >
+              {b}
+            </div>
           ))}
+          <div
+            onClick={() => setBrand('Combined')}
+            style={{
+              width: 140,
+              height: 100,
+              borderRadius: 10,
+              border: `2px solid ${isCombined ? 'var(--brass)' : 'var(--line)'}`,
+              background: isCombined ? 'var(--brass)' : 'transparent',
+              color: isCombined ? '#26241e' : 'var(--ink-soft)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              fontWeight: 700,
+              fontSize: 15,
+              cursor: 'pointer',
+              transition: 'all .12s ease',
+            }}
+          >
+            <span>Combined</span>
+            <span style={{ fontWeight: 400, fontSize: 11 }}>totals only</span>
+          </div>
         </div>
         {isCombined && (
-          <div className="mini-note" style={{ marginTop: 8 }}>
+          <div className="mini-note" style={{ marginTop: 12 }}>
             Combined only shows totals across both brands, here on Home. Every other page shows one brand at a time —
             switch to Loma or Sauca to work in them.
           </div>
