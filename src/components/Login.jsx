@@ -3,6 +3,7 @@ import { useState } from 'react';
 const STORAGE_KEY = 'loma-auth-v2';
 const ADMIN = { username: 'LOMA', password: 'LOMA2026@', role: 'admin' };
 const VIEWER = { username: 'LOMAVIEW', password: 'View2026@', role: 'viewer' };
+const CA = { username: 'LOMACA', password: 'CA2026@', role: 'ca' };
 
 export function getRole() {
   try {
@@ -31,6 +32,7 @@ export default function Login({ onSuccess }) {
     let match = null;
     if (u === ADMIN.username && pass === ADMIN.password) match = ADMIN;
     else if (u === VIEWER.username && pass === VIEWER.password) match = VIEWER;
+    else if (u === CA.username && pass === CA.password) match = CA;
 
     if (match) {
       try {
