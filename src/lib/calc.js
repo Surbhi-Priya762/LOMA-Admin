@@ -63,7 +63,7 @@ export function blankQCChecklist() {
 }
 export const SALE_TYPES = ['Online', 'Offline'];
 export const CHANNELS_BY_TYPE = {
-  Online: ['Myntra', 'Nykaa', 'Shopify', 'Other'],
+   Online: ['Myntra', 'Nykaa', 'Shopify', 'Coyu MTO', 'Other'],
   Offline: ['Coyu Store', 'Our Store', 'Popup Sale'],
 };
 export const CHANNELS = [...CHANNELS_BY_TYPE.Online, ...CHANNELS_BY_TYPE.Offline];
