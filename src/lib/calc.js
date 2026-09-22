@@ -61,15 +61,17 @@ export function blankQCChecklist() {
   });
   return rows;
 }
-export const SALE_TYPES = ['Online', 'Offline'];
+export const SALE_TYPES = ['Online', 'Offline', 'Onhand'];
 export const CHANNELS_BY_TYPE = {
-   Online: ['Myntra', 'Nykaa', 'Shopify', 'Coyu MTO', 'Other'],
+  Online: ['Myntra', 'Nykaa', 'Shopify', 'Coyu MTO', 'Other'],
   Offline: ['Coyu Store', 'Our Store', 'Popup Sale'],
+  Onhand: ['Coyu Onhand'],
 };
-export const CHANNELS = [...CHANNELS_BY_TYPE.Online, ...CHANNELS_BY_TYPE.Offline];
+export const CHANNELS = [...CHANNELS_BY_TYPE.Online, ...CHANNELS_BY_TYPE.Offline, ...CHANNELS_BY_TYPE.Onhand];
 export function saleTypeForChannel(channel) {
   if (CHANNELS_BY_TYPE.Online.includes(channel)) return 'Online';
   if (CHANNELS_BY_TYPE.Offline.includes(channel)) return 'Offline';
+  if (CHANNELS_BY_TYPE.Onhand.includes(channel)) return 'Onhand';
   return null;
 }
 

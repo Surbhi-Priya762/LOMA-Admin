@@ -81,6 +81,8 @@ export default function Sales({ data, reload, brand }) {
     const q = Number(qty) || 0;
     if (q <= 0) { toast('Enter a quantity.'); return; }
 
+    const stockAffected = saleType !== 'Onhand';
+
     const grossNum = gross === '' ? null : Number(gross);
     const netNum = net === '' ? null : Number(net);
     const entry = {
@@ -89,12 +91,16 @@ export default function Sales({ data, reload, brand }) {
       commission_type: commType, commission_value: commValue === '' ? null : Number(commValue),
       gross_amount: grossNum, net_amount: netNum,
       price: gross === '' ? null : Number(gross) / q,
+      stock_affected: stockAffected,
       brand,
     };
     await addSale(entry);
-    const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
-    delete updated.updated_at;
-    await saveProduct(updated);
+
+    if (stockAffected) {
+      const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
+      delete updated.updated_at;
+      await saveProduct(updated);
+    }
 
     const instantChannels = ['Our Store', 'Popup Sale'];
     const isInstant = instantChannels.includes(channel);
@@ -105,24 +111,28 @@ export default function Sales({ data, reload, brand }) {
       expected_amount: netNum, received_amount: isInstant ? netNum : null,
       status: isInstant ? 'Settled' : 'Pending',
       settlement_date: isInstant ? date : null, notes: '',
+      stock_affected: stockAffected,
       brand,
     });
 
-    toast('Sale logged.');
+    toast(stockAffected ? 'Sale logged.' : 'Onhand sale logged — stock not affected.');
     setGross(''); setNet('');
     reload();
   }
 
   async function handleUndo(entry) {
-    const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
-    if (p) {
-      const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: (Number(s.stock) || 0) + Number(entry.qty) } : s)) };
-      delete updated.updated_at;
-      await saveProduct(updated);
+    const stockAffected = entry.stock_affected !== false; // older rows without the flag default to true
+    if (stockAffected) {
+      const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
+      if (p) {
+        const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: (Number(s.stock) || 0) + Number(entry.qty) } : s)) };
+        delete updated.updated_at;
+        await saveProduct(updated);
+      }
     }
     await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
-    toast('Sale undone, stock restored.');
+    toast(stockAffected ? 'Sale undone, stock restored.' : 'Onhand sale undone.');
     reload();
   }
 
@@ -138,6 +148,7 @@ export default function Sales({ data, reload, brand }) {
         gross_amount: saleGross(sale), commission_type: sale.commission_type, commission_value: sale.commission_value,
         expected_amount: saleNet(sale), received_amount: null,
         status: newStatus, settlement_date: newStatus === 'Settled' ? todayStr() : null, notes: '',
+        stock_affected: sale.stock_affected !== false,
         brand: sale.brand || brand,
       });
     }
@@ -185,6 +196,7 @@ export default function Sales({ data, reload, brand }) {
         { key: 'commission_value', label: 'Commission Value' },
         { key: (l) => fmt(saleGross(l)) ?? '', label: 'Gross' },
         { key: (l) => fmt(saleNet(l)) ?? '', label: 'Net' },
+        { key: (l) => (l.stock_affected === false ? 'No' : 'Yes'), label: 'Stock Affected' },
       ],
       `loma-sales-${todayStr()}.csv`
     );
@@ -196,7 +208,7 @@ export default function Sales({ data, reload, brand }) {
       <div className="topline">
         <div>
           <h1 className="page-title">Sales</h1>
-          <div className="page-sub">Log a sale to deduct finished-goods stock and track Gross &amp; Net revenue by channel</div>
+          <div className="page-sub">Log a sale — Online/Offline deduct finished-goods stock, Onhand (Coyu portal) doesn't since that stock already left as bulk consignment</div>
         </div>
         <div className="toolbar">
           <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
@@ -289,7 +301,7 @@ export default function Sales({ data, reload, brand }) {
         </div>
         <div className="field-row">
           <div className="field">
-            <label>Online or Offline</label>
+            <label>Sale Type</label>
             <select value={saleType} onChange={(e) => selectSaleType(e.target.value)}>
               {SALE_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
@@ -301,6 +313,11 @@ export default function Sales({ data, reload, brand }) {
             </select>
           </div>
         </div>
+        {saleType === 'Onhand' && (
+          <div className="mini-note" style={{ marginBottom: 10, color: 'var(--brass)' }}>
+            Onhand = Coyu's daily portal sale from stock already bulk-shipped earlier. This logs as revenue but will NOT deduct from your product stock.
+          </div>
+        )}
         <div className="field-row">
           <div className="field">
             <label>Gross sale (Rs.)</label>
@@ -350,7 +367,7 @@ export default function Sales({ data, reload, brand }) {
                 return (
                 <tr key={l.id}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
-                  <td>{l.sale_type || saleTypeForChannel(l.channel) || '—'}</td>
+                  <td>{l.sale_type || saleTypeForChannel(l.channel) || '—'}{l.stock_affected === false ? ' (no stock)' : ''}</td>
                   <td>{l.channel}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>

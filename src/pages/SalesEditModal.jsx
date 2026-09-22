@@ -31,39 +31,57 @@ export default function SalesEditModal({ sale, products, linkedSettlement, onClo
     try {
       const oldProduct = products.find((p) => p.id === sale.product_id || p.name === sale.product_name);
       const sameLine = oldProduct && oldProduct.id === selectedProduct.id && sale.size === size;
+      const wasAffected = sale.stock_affected !== false; // older rows without the flag default to true
+      const newAffected = saleType !== 'Onhand';
 
-      if (!sameLine) {
-        // reverse the old deduction, apply the new one
+      if (wasAffected && newAffected) {
+        // unchanged behaviour: normal reconciliation
+        if (!sameLine) {
+          if (oldProduct) {
+            const restored = { ...oldProduct, sizes: oldProduct.sizes.map((s) => (s.size === sale.size ? { ...s, stock: (Number(s.stock) || 0) + Number(sale.qty) } : s)) };
+            delete restored.updated_at;
+            await saveProduct(restored);
+          }
+          const freshProduct = oldProduct && oldProduct.id === selectedProduct.id ? { ...oldProduct } : selectedProduct;
+          const deducted = { ...freshProduct, sizes: freshProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
+          delete deducted.updated_at;
+          await saveProduct(deducted);
+        } else if (Number(sale.qty) !== q) {
+          const diff = q - Number(sale.qty);
+          const updated = { ...oldProduct, sizes: oldProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - diff } : s)) };
+          delete updated.updated_at;
+          await saveProduct(updated);
+        }
+      } else if (wasAffected && !newAffected) {
+        // switched INTO Onhand — give back the old deduction, nothing new to deduct
         if (oldProduct) {
           const restored = { ...oldProduct, sizes: oldProduct.sizes.map((s) => (s.size === sale.size ? { ...s, stock: (Number(s.stock) || 0) + Number(sale.qty) } : s)) };
           delete restored.updated_at;
           await saveProduct(restored);
         }
-        const freshProduct = oldProduct && oldProduct.id === selectedProduct.id ? { ...oldProduct } : selectedProduct;
-        const deducted = { ...freshProduct, sizes: freshProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
+      } else if (!wasAffected && newAffected) {
+        // switched OUT of Onhand — nothing to reverse, just apply the new deduction
+        const deducted = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
         delete deducted.updated_at;
         await saveProduct(deducted);
-      } else if (Number(sale.qty) !== q) {
-        // same product+size, just a quantity correction
-        const diff = q - Number(sale.qty);
-        const updated = { ...oldProduct, sizes: oldProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - diff } : s)) };
-        delete updated.updated_at;
-        await saveProduct(updated);
       }
+      // wasAffected === false && newAffected === false: stayed Onhand — no stock touch at all
 
       const updatedSale = {
         ...sale, product_id: selectedProduct.id, product_name: selectedProduct.name,
         size, qty: q, sale_type: saleType, channel, date,
+        stock_affected: newAffected,
       };
       await updateSale(updatedSale);
 
       if (linkedSettlement) {
         await updateSettlement({
           ...linkedSettlement, product_name: selectedProduct.name, size, qty: q, channel, date_logged: date,
+          stock_affected: newAffected,
         });
       }
 
-      toast('Sale updated, stock adjusted.');
+      toast(newAffected ? 'Sale updated, stock adjusted.' : 'Sale updated — stock not affected (Onhand).');
       onSaved();
     } finally {
       setSaving(false);
@@ -79,7 +97,7 @@ export default function SalesEditModal({ sale, products, linkedSettlement, onClo
         </div>
         <div className="modal-body">
           <div className="mini-note" style={{ marginBottom: 12 }}>
-            Changing Product, Size, or Qty automatically corrects stock — the old deduction is reversed and the new one applied.
+            Changing Product, Size, or Qty automatically corrects stock (unless this is an Onhand sale) — the old deduction is reversed and the new one applied.
           </div>
           <div className="field">
             <label>Product</label>
@@ -101,7 +119,7 @@ export default function SalesEditModal({ sale, products, linkedSettlement, onClo
           </div>
           <div className="field-row">
             <div className="field">
-              <label>Online or Offline</label>
+              <label>Sale Type</label>
               <select value={saleType} onChange={(e) => selectSaleType(e.target.value)}>
                 {SALE_TYPES.map((t) => <option key={t}>{t}</option>)}
               </select>
@@ -113,6 +131,11 @@ export default function SalesEditModal({ sale, products, linkedSettlement, onClo
               </select>
             </div>
           </div>
+          {saleType === 'Onhand' && (
+            <div className="mini-note" style={{ marginBottom: 12, color: 'var(--brass)' }}>
+              Onhand = Coyu's daily portal sale from already-shipped stock. Saving with this type will not deduct stock (and will give back any earlier deduction if this sale was previously Online/Offline).
+            </div>
+          )}
           {linkedSettlement && (
             <div className="mini-note">This sale's Settlement record will be updated to match too (Product/Size/Qty/Channel/Date) — Gross, Net, and Commission stay as they are, edit those on the Settlements page if needed.</div>
           )}
