@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { todayStr, rupee, uid, exportToExcel } from '../lib/calc';
+import { todayStr, rupee, uid, exportToExcel, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
+import DateFilter from '../components/DateFilter';
 import { addExpense, deleteExpense } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -14,7 +15,7 @@ const PAYMENT_MODES = ['UPI', 'Bank Transfer', 'Card', 'Cash', 'Cheque', 'Other'
 export default function Expenses({ data, reload }) {
   const { toast, confirm } = useUI();
   const { expenses } = data;
-  const [monthFilter, setMonthFilter] = useState('All');
+  const [range, setRange] = useState(() => rangeForPreset('this-month'));
   const [search, setSearch] = useState('');
 
   const [date, setDate] = useState(todayStr());
@@ -31,7 +32,7 @@ export default function Expenses({ data, reload }) {
   const allMonths = Array.from(new Set(expenses.map((e) => (e.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
   const filtered = expenses.filter((e) => {
-    if (monthFilter !== 'All' && (e.date || '').slice(0, 7) !== monthFilter) return false;
+    if (!inDateRange(e.date, range)) return false;
     if (q && !(e.vendor || '').toLowerCase().includes(q) && !(e.category || '').toLowerCase().includes(q) && !(e.description || '').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -58,7 +59,7 @@ export default function Expenses({ data, reload }) {
         { key: 'gst_applicable', label: 'GST' },
         { key: 'notes', label: 'Notes' },
       ],
-      `loma-expenses-${todayStr()}.csv`
+      `loma-expenses-${rangeLabel(range)}.csv`
     );
   }
 
@@ -95,12 +96,7 @@ export default function Expenses({ data, reload }) {
         </div>
       </div>
 
-      <div className="tabs-row">
-        <div className={`pill ${monthFilter === 'All' ? 'active' : ''}`} onClick={() => setMonthFilter('All')}>All months</div>
-        {allMonths.map((m) => (
-          <div className={`pill ${monthFilter === m ? 'active' : ''}`} key={m} onClick={() => setMonthFilter(m)}>{m}</div>
-        ))}
-      </div>
+      <DateFilter value={range} onChange={setRange} months={allMonths} />
 
       <div className="grid-cards">
         <div className="stat-card"><div className="stat-num">{rupee(total)}</div><div className="stat-label">Total (filtered)</div></div>
@@ -109,7 +105,7 @@ export default function Expenses({ data, reload }) {
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log an expense</p>
         <div className="mini-note" style={{ marginBottom: 10 }}>Recorded under {COMPANY}.</div>
         <div className="field-row">

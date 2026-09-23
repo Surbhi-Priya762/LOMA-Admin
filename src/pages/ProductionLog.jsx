@@ -15,7 +15,7 @@ function daysBetween(a, b) {
 }
 
 export default function ProductionLog({ data, reload, brand }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const products = filterByBrand(data.products, brand);
   const productionLog = filterByBrand(data.productionLog, brand);
   const qualityChecks = filterByBrand(data.qualityChecks, brand);
@@ -111,6 +111,11 @@ export default function ProductionLog({ data, reload, brand }) {
   }
 
   async function handleUndo(entry) {
+    const ok = await confirm(
+      `Undo this production entry?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) · ${entry.date}\n\nThis also removes its Quality Check entry.`,
+      'Undo entry'
+    );
+    if (!ok) return;
     await deleteQualityCheckByProductionLog(entry.id);
     await deleteProductionLog(entry.id);
     toast('Entry undone.');
@@ -147,7 +152,7 @@ export default function ProductionLog({ data, reload, brand }) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log a new entry</p>
         <div className="field-row">
           <div className="field">

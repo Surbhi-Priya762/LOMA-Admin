@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel, exportToExcel, filterByBrand } from '../lib/calc';
+import { CHANNELS, SIZES, rupee, applyCommission, todayStr, uid, saleTypeForChannel, exportToExcel, filterByBrand, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
+import DateFilter from '../components/DateFilter';
 import { addSettlement, updateSettlement, deleteSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
@@ -9,7 +10,7 @@ export default function Settlements({ data, reload, brand }) {
   const { toast, confirm } = useUI();
   const settlements = filterByBrand(data.settlements, brand);
   const products = filterByBrand(data.products, brand);
-  const [monthFilter, setMonthFilter] = useState('All');
+  const [range, setRange] = useState(() => rangeForPreset('all'));
   const [channelFilter, setChannelFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -58,7 +59,7 @@ export default function Settlements({ data, reload, brand }) {
   const allMonths = Array.from(new Set((settlements || []).map((s) => (s.date_logged || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
   const filtered = (settlements || []).filter((s) => {
-    if (monthFilter !== 'All' && (s.date_logged || '').slice(0, 7) !== monthFilter) return false;
+    if (!inDateRange(s.date_logged, range)) return false;
     if (channelFilter !== 'All' && s.channel !== channelFilter) return false;
     if (statusFilter !== 'All' && (s.status || 'Pending') !== statusFilter) return false;
     if (q && !(s.product_name || '').toLowerCase().includes(q) && !(s.channel || '').toLowerCase().includes(q)) return false;
@@ -94,7 +95,7 @@ export default function Settlements({ data, reload, brand }) {
         { key: 'notes', label: 'Notes' },
         { key: 'cancel_reason', label: 'Reason (if cancelled)' },
       ],
-      `loma-settlements-${todayStr()}.csv`
+      `loma-settlements-${rangeLabel(range)}.csv`
     );
   }
 
@@ -215,12 +216,7 @@ export default function Settlements({ data, reload, brand }) {
         <button className="btn" onClick={handleLogSettlement}>Log settlement</button>
       </div>
 
-      <div className="tabs-row">
-        <div className={`pill ${monthFilter === 'All' ? 'active' : ''}`} onClick={() => setMonthFilter('All')}>All months</div>
-        {allMonths.map((m) => (
-          <div className={`pill ${monthFilter === m ? 'active' : ''}`} key={m} onClick={() => setMonthFilter(m)}>{m}</div>
-        ))}
-      </div>
+      <DateFilter value={range} onChange={setRange} months={allMonths} />
       <div className="tabs-row">
         <div className={`pill ${channelFilter === 'All' ? 'active' : ''}`} onClick={() => setChannelFilter('All')}>All channels</div>
         {CHANNELS.map((c) => (
