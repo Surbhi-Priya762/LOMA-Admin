@@ -1,18 +1,20 @@
-// Wraps any page that only ever shows one brand at a time (everything except
-// Home, Products, and Raw Materials). If someone lands here with "Combined"
-// selected, show a friendly nudge instead of silently mixing both brands'
-// data together.
-export default function BrandGate({ brand, children }) {
+// Shown on pages that only ever display one brand at a time when "Combined" is selected.
+export default function BrandGate({ brand, setBrand, pageName, children }) {
   if (brand === 'Combined') {
     return (
-      <div className="card" style={{ marginTop: 4 }}>
-        <p className="section-title">Pick a brand to view this page</p>
-        <div className="mini-note">
-          This page always shows one brand's data at a time. "Combined" is only available on
-          Home — switch to Loma or Sauca (from Home, or the sidebar switcher) to see this page.
+      <div className="card" style={{ marginTop: 4, maxWidth: 520 }}>
+        <p className="section-title">Pick a brand to open {pageName || 'this page'}</p>
+        <div className="mini-note" style={{ marginBottom: 12 }}>
+          This page shows one brand at a time. "Both" works on Home and Expenses only.
         </div>
+        {setBrand && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => setBrand('Loma')}>Show Lõma</button>
+            <button className="btn secondary" onClick={() => setBrand('Sauca')}>Show Sauca</button>
+          </div>
+        )}
       </div>
     );
   }
-  return children;
+  return children ?? null;
 }

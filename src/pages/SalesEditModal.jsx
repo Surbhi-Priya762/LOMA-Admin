@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel } from '../lib/calc';
+import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, sizeStock } from '../lib/calc';
 import { updateSale, saveProduct, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 export default function SalesEditModal({ sale, products, linkedSettlement, onClose, onSaved }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const [productId, setProductId] = useState(sale.product_id || '');
   const [size, setSize] = useState(sale.size || '');
   const [qty, setQty] = useState(sale.qty ?? 1);
@@ -26,6 +26,20 @@ export default function SalesEditModal({ sale, products, linkedSettlement, onClo
     if (!size) { toast('Select a size.'); return; }
     const q = Number(qty) || 0;
     if (q <= 0) { toast('Enter a quantity.'); return; }
+
+    if (saleType !== 'Onhand') {
+      const prev = products.find((p) => p.id === sale.product_id || p.name === sale.product_name);
+      const sameLineNow = prev && prev.id === selectedProduct.id && sale.size === size;
+      const giveBack = sameLineNow && sale.stock_affected !== false ? Number(sale.qty) || 0 : 0;
+      const available = sizeStock(selectedProduct, size) + giveBack;
+      if (q > available) {
+        const ok = await confirm(
+          `Only ${available} available for ${selectedProduct.name} (${size}), but this sale is for ${q}.\n\nSaving will take stock below zero. Save anyway?`,
+          'Save anyway'
+        );
+        if (!ok) return;
+      }
+    }
 
     setSaving(true);
     try {

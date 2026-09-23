@@ -3,9 +3,9 @@ import { rupee, todayStr, formatTimestamp, productProductionCost, materialTotalI
 import { updateSettings, recordLastUpdate } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
-export default function Home({ data, setRoute, reload, role, brand, setBrand }) {
+export default function Home({ data, setRoute, reload, role, brand }) {
   const { toast, promptName } = useUI();
-  const { products, materials, productionLog, salesLog, settings, lastUpdate, expenses, settlements } = data;
+  const { products, materials, productionLog, salesLog, settings, lastUpdate, expenses, settlements, qualityChecks } = data;
   const [budgetInput, setBudgetInput] = useState(settings.daily_labour_budget ?? '');
   const isViewer = role === 'viewer';
   const isAdmin = role === 'admin';
@@ -33,12 +33,12 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
     if (filterMode === 'date') return dateStr === filterDate;
     return dateStr.slice(0, 7) === filterMonth;
   }
-  const periodLabel = filterMode === 'date' ? filterDate : filterMonth;
 
   const totalFabrics = materialsForBrand.filter((m) => m.category === 'Fabric').length;
 
-  const periodProd = productionLog.filter((l) => matchesPeriod(l.date)).reduce((a, l) => a + (Number(l.qty) || 0), 0);
-  const periodSales = salesLog.filter((l) => matchesPeriod(l.date));
+  const brandRows = (rows) => (brand === 'Combined' ? rows || [] : (rows || []).filter((r) => (r.brand || 'Loma') === brand));
+  const periodProd = brandRows(productionLog).filter((l) => matchesPeriod(l.date)).reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const periodSales = brandRows(salesLog).filter((l) => matchesPeriod(l.date));
   const periodUnits = periodSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
   const periodGross = periodSales.reduce((a, l) => a + (saleGross(l) || 0), 0);
   const periodNet = periodSales.reduce((a, l) => a + (saleNet(l) || 0), 0);
@@ -67,8 +67,8 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
 
   const missingCost = productsForBrand.filter((p) => productProductionCost(p, settings.daily_labour_budget) == null).length;
 
-  const recentProd = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
-  const recentSales = [...salesLog].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
+  const recentProd = [...brandRows(productionLog)].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
+  const recentSales = [...brandRows(salesLog)].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 6);
 
   const activeSettlements = (settlements || []).filter((s) => (s.status || 'Pending') !== 'Cancelled');
   const settledList = activeSettlements.filter((s) => s.status === 'Settled');
@@ -77,6 +77,74 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
   const pendingList = activeSettlements.filter((s) => (s.status || 'Pending') !== 'Settled');
   const pendingCount = pendingList.length;
   const pendingTotal = pendingList.reduce((a, s) => a + ((Number(s.expected_amount) || 0) - (Number(s.received_amount) || 0)), 0);
+
+
+  // ---------- Needs attention ----------
+  const byBrand = brandRows;
+  const daysAgo = (d) => (d ? Math.round((new Date(today) - new Date(d.slice(0, 10))) / 86400000) : null);
+
+  const qcPending = byBrand(qualityChecks).filter((q) => (q.overall_result || 'Pending') === 'Pending');
+  const qcOld = qcPending.filter((q) => (daysAgo(q.date) ?? 0) > 3).length;
+
+  const brandPending = byBrand(activeSettlements).filter((s) => (s.status || 'Pending') !== 'Settled');
+  const brandPendingTotal = brandPending.reduce((a, s) => a + ((Number(s.expected_amount) || 0) - (Number(s.received_amount) || 0)), 0);
+  const pendingOld = brandPending.filter((s) => (daysAgo(s.date_logged) ?? 0) > 30).length;
+
+  const brandSales = byBrand(salesLog);
+  const lastSaleFor = {};
+  brandSales.forEach((l) => {
+    const k = l.product_id || l.product_name;
+    if (!lastSaleFor[k] || (l.date || '') > lastSaleFor[k]) lastSaleFor[k] = l.date || '';
+    if (l.product_name && (!lastSaleFor[l.product_name] || (l.date || '') > lastSaleFor[l.product_name])) lastSaleFor[l.product_name] = l.date || '';
+  });
+  const lastSale = (p) => [lastSaleFor[p.id], lastSaleFor[p.name]].filter(Boolean).sort().pop() || null;
+
+  // Styles that sold in the last 60 days but have one or more sizes at 0.
+  const soldOut = [];
+  let soldOutSizes = 0;
+  productsForBrand.forEach((p) => {
+    const ls = lastSale(p);
+    if (!ls || daysAgo(ls) > 60) return;
+    const out = (p.sizes || []).filter((sz) => (Number(sz.stock) || 0) <= 0).map((sz) => sz.size);
+    if (out.length) { soldOut.push(`${p.name.split('|')[0].trim()} (${out.join(', ')})`); soldOutSizes += out.length; }
+  });
+
+  const slowMovers = productsForBrand
+    .filter((p) => (p.sizes || []).reduce((a, sz) => a + (Number(sz.stock) || 0), 0) > 0)
+    .filter((p) => { const ls = lastSale(p); return !ls || daysAgo(ls) > 45; });
+
+  const shortName = (n) => (n || '').split('|')[0].trim();
+  const alerts = [];
+  if (!isViewer) {
+    if (qcPending.length) alerts.push({
+      tone: qcOld ? 'warn' : 'info', route: 'qualitycheck', title: `${qcPending.length} quality check${qcPending.length === 1 ? '' : 's'} pending`,
+      detail: qcOld ? `${qcOld} waiting more than 3 days` : 'All logged in the last 3 days', cta: 'Open Quality Check',
+    });
+    if (isAdmin && brandPending.length) alerts.push({
+      tone: pendingOld ? 'warn' : 'info', route: 'settlements', title: `${rupee(brandPendingTotal)} waiting to be settled`,
+      detail: `${brandPending.length} order${brandPending.length === 1 ? '' : 's'}${pendingOld ? ` · ${pendingOld} older than 30 days` : ''}`, cta: 'Open Settlements',
+    });
+    if (soldOut.length) alerts.push({
+      tone: 'warn', route: 'stockcheck', title: `${soldOut.length} selling style${soldOut.length === 1 ? ' has' : 's have'} sizes out of stock`,
+      detail: `${soldOutSizes} sizes at 0 · ` + soldOut.slice(0, 2).join('; ') + (soldOut.length > 2 ? ` +${soldOut.length - 2} more` : ''), cta: 'Open Stock Check',
+    });
+    if (slowMovers.length) alerts.push({
+      tone: 'info', route: 'products', title: `${slowMovers.length} style${slowMovers.length === 1 ? '' : 's'} with no sale in 45 days`,
+      detail: slowMovers.slice(0, 3).map((p) => shortName(p.name)).join(', ') + (slowMovers.length > 3 ? ` +${slowMovers.length - 3} more` : ''), cta: 'Open Products',
+    });
+    if (expenseStale) alerts.push({
+      tone: 'warn', route: 'expenses', title: lastExpense ? `No expense logged for ${daysSinceExpense} day${daysSinceExpense === 1 ? '' : 's'}` : 'No expenses logged yet',
+      detail: lastExpense ? `Last entry ${lastExpense.date}` : 'Start logging spend', cta: 'Open Expenses',
+    });
+    if (missingCost) alerts.push({
+      tone: 'info', route: 'products', title: `${missingCost} product${missingCost === 1 ? '' : 's'} missing cost data`,
+      detail: 'Margins can’t be calculated for these', cta: 'Open Products',
+    });
+    if (reorderCount) alerts.push({
+      tone: 'warn', route: 'stock', title: `${reorderCount} material${reorderCount === 1 ? '' : 's'} to reorder`,
+      detail: 'At or below the reorder level', cta: 'Open Stock',
+    });
+  }
 
   async function saveBudget() {
     const newBudget = budgetInput === '' ? null : Number(budgetInput);
@@ -88,169 +156,68 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
     reload();
   }
 
+  const brandName = brand === 'Combined' ? 'Lõma + Sauca' : brand === 'Loma' ? 'Lõma' : brand;
+
   return (
     <div>
       <div className="topline">
         <div>
           <h1 className="page-title">Home</h1>
-          <div className="page-sub">Everything at a glance — Lõma production &amp; inventory</div>
+          <div className="page-sub">{brandName} · everything at a glance</div>
         </div>
-        {isAdmin && (
-          <div
-            className="card"
-            style={{ width: 220, flex: '0 0 220px', borderColor: 'var(--brass)', cursor: 'pointer' }}
-            onClick={() => setRoute('settlements')}
-          >
-            <p className="section-title" style={{ marginBottom: 8 }}>Settlements — overall</p>
-            <div className="mini-note" style={{ marginBottom: 8 }}>Not tied to the month filter below — this is everything, always.</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>
-              <span>Settled</span><strong>{settledCount} · {rupee(settledTotal)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-              <span>Pending</span><strong style={{ color: 'var(--rust)' }}>{pendingCount} · {rupee(pendingTotal)}</strong>
-            </div>
-            <div className="link-btn" style={{ marginTop: 8, display: 'inline-block' }}>Go to Settlements →</div>
-          </div>
-        )}
       </div>
 
       {!isViewer && (
-        <div className="card" style={{ marginBottom: 18, borderColor: 'var(--brass)' }}>
-          <p className="section-title">Brand</p>
-          <div className="mini-note" style={{ marginBottom: 10 }}>Pick which brand's products, stock, and dashboard you want to see. Expenses and labour budget stay shared across both.</div>
-          <div className="tabs-row" style={{ marginBottom: 0 }}>
-            {['Loma', 'Sauca', 'Combined'].map((b) => (
-              <div key={b} className={`pill ${brand === b ? 'active' : ''}`} onClick={() => setBrand(b)}>{b}</div>
-            ))}
-          </div>
-          {brand !== 'Combined' && (
-            <div className="mini-note" style={{ marginTop: 8 }}>
-              Sales, Production Log, and Settlements below still show combined numbers across both brands for now — that split is coming next.
+        <section className="attention" aria-label="Needs attention">
+          <p className="section-title">Needs attention</p>
+          {alerts.length === 0 ? (
+            <div className="card all-clear">All clear — nothing needs you right now.</div>
+          ) : (
+            <div className="alert-grid">
+              {alerts.map((a) => (
+                <button key={a.title} className={`alert-card ${a.tone}`} onClick={() => setRoute(a.route)}>
+                  <span className="alert-title">{a.title}</span>
+                  <span className="alert-detail">{a.detail}</span>
+                  <span className="alert-cta">{a.cta} →</span>
+                </button>
+              ))}
             </div>
           )}
-        </div>
+        </section>
       )}
 
-      <div className="card" style={{ marginBottom: 18 }}>
-        <p className="section-title">Dashboard period</p>
-        <div className="mini-note" style={{ marginBottom: 10 }}>All the numbers below (except Products/Fabrics/reorder counts, and the Settlements box above) follow this — pick a month, or an exact date.</div>
-        <div className="tabs-row">
-          {availableMonths.map((m) => (
-            <div
-              key={m}
-              className={`pill ${filterMode === 'month' && filterMonth === m ? 'active' : ''}`}
-              onClick={() => { setFilterMode('month'); setFilterMonth(m); }}
-            >
-              {m}
-            </div>
-          ))}
-        </div>
-        <div className="field-row" style={{ maxWidth: 260, alignItems: 'flex-end' }}>
-          <div className="field">
-            <label>Or an exact date</label>
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => { setFilterDate(e.target.value); setFilterMode('date'); }}
-            />
-          </div>
-          {filterMode === 'date' && (
-            <button className="btn secondary small" onClick={() => setFilterMode('month')}>Back to month view</button>
-          )}
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 18 }}>
-        <p className="section-title">Last updated</p>
-        {lastUpdate ? (
-          <div style={{ fontSize: 13.5 }}>
-            <strong>{lastUpdate.name}</strong> — {lastUpdate.what}{' '}
-            <span style={{ color: 'var(--ink-soft)' }}>· {formatTimestamp(lastUpdate.ts)}</span>
-          </div>
-        ) : (
-          <div className="empty" style={{ padding: '6px 0' }}>
-            No updates logged yet — this fills in the next time someone saves a product or raw material.
-          </div>
+      <div className="period-bar">
+        <p className="section-title" style={{ margin: 0 }}>Numbers for</p>
+        <select
+          className="month-select"
+          aria-label="Dashboard month"
+          value={filterMode === 'month' ? filterMonth : ''}
+          onChange={(e) => { if (e.target.value) { setFilterMode('month'); setFilterMonth(e.target.value); } }}
+        >
+          {filterMode === 'date' && <option value="">Exact date</option>}
+          {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+        </select>
+        <label className="inline-date">
+          or a day
+          <input type="date" value={filterDate} onChange={(e) => { setFilterDate(e.target.value); setFilterMode('date'); }} />
+        </label>
+        {filterMode === 'date' && (
+          <button className="btn secondary small" onClick={() => setFilterMode('month')}>Back to month</button>
         )}
       </div>
-
-      {!isViewer && (
-        <div className="card" style={{ marginBottom: 18, borderColor: expenseStale ? 'var(--rust)' : 'var(--line)' }}>
-          <p className="section-title">Expenses (shared — both brands)</p>
-          <div style={{ fontSize: 13.5 }}>
-            {lastExpense ? (
-              <>
-                Last entry: <strong>{lastExpense.date}</strong> ({daysSinceExpense === 0 ? 'today' : `${daysSinceExpense} day${daysSinceExpense === 1 ? '' : 's'} ago`})
-                {expenseStale && <span style={{ color: 'var(--rust)', fontWeight: 600 }}> — nobody's updated this in a while, nudge the group.</span>}
-              </>
-            ) : (
-              <span style={{ color: 'var(--rust)' }}>No expenses logged yet.</span>
-            )}
-          </div>
-          <div className="mini-note" style={{ marginTop: 4 }}>For {periodLabel}: {rupee(periodExpenseTotal)} across {periodExpenses.length} entries.</div>
-          <div style={{ marginTop: 8 }}>
-            <button className="link-btn" onClick={() => setRoute('expenses')}>Go to Expenses →</button>
-          </div>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="card" style={{ marginBottom: 18 }}>
-          <p className="section-title">Daily labour budget (shared — both brands)</p>
-          <div className="mini-note" style={{ marginBottom: 8 }}>
-            Shared across every product's labour cost, both brands — change it here as your tailor headcount or wages change,
-            and every product recalculates.
-          </div>
-          <div className="field-row" style={{ alignItems: 'flex-end' }}>
-            <div className="field" style={{ maxWidth: 200 }}>
-              <label>Rs. per day</label>
-              <input type="number" step="any" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="e.g. 1100" />
-            </div>
-            <button className="btn secondary small" onClick={saveBudget}>
-              Save
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="grid-cards">
-        <Stat num={productsForBrand.length} label={`Products${brand !== 'Combined' ? ' — ' + brand : ''}`} />
-        <Stat num={totalFabrics} label={`Fabrics tracked${brand !== 'Combined' ? ' — ' + brand : ''}`} />
-        <Stat num={periodProd} label={`Pieces logged — ${periodLabel}`} />
-        <Stat num={periodUnits} label={`Units sold — ${periodLabel}`} />
-        {!isViewer && <Stat num={rupee(periodGross)} label={`Gross sale — ${periodLabel}`} />}
-        {!isViewer && <Stat num={rupee(periodNet)} label={`Net sale — ${periodLabel}`} />}
-        {!isViewer && <Stat num={rupee(periodOnlineNet)} label="Online sales (Myntra, Nykaa, Shopify, Other)" />}
-        {!isViewer && <Stat num={rupee(periodOfflineNet)} label="Offline sales (Coyu Store, Popup, Our Store)" />}
-        {!isViewer && <Stat num={rupee(periodExpenseTotal)} label={`Expenses — ${periodLabel}`} />}
-        <Stat num={reorderCount} label={`Materials to reorder${brand !== 'Combined' ? ' — ' + brand : ''}`} flag={reorderCount > 0 ? 'Check Stock page' : null} />
-        {!isViewer && <Stat num={missingCost} label={`Products missing cost data${brand !== 'Combined' ? ' — ' + brand : ''}`} flag={missingCost > 0 ? 'Fill in Products page' : null} />}
+        {!isViewer && <Stat num={rupee(periodNet)} label="Net sales" sub={`Gross ${rupee(periodGross)}`} strong />}
+        <Stat num={periodUnits} label="Units sold" />
+        {!isViewer && <Stat num={rupee(periodExpenseTotal)} label="Expenses" sub={`${periodExpenses.length} entries · both brands`} />}
+        <Stat num={periodProd} label="Pieces made" />
+        {!isViewer && <Stat num={rupee(periodOnlineNet)} label="Online net" sub="Myntra, Nykaa, Shopify, other" />}
+        {!isViewer && <Stat num={rupee(periodOfflineNet)} label="Offline net" sub="Coyu, popups, our store" />}
+        <Stat num={productsForBrand.length} label="Products" sub={`${totalFabrics} fabrics tracked`} />
       </div>
 
       {!isViewer && (
-        <div className="two-col">
-          <div className="card">
-            <p className="section-title">Recent production</p>
-            {recentProd.length === 0 ? (
-              <div className="empty">No production logged yet.</div>
-            ) : (
-              recentProd.map((l) => (
-                <div className="activity-row" key={l.id}>
-                  <span>
-                    {l.date} — {l.product_name} ({l.size})
-                  </span>
-                  <span className={`tag ${l.status === 'Ready' ? 'ready' : l.status === 'In Progress' ? 'progress' : 'pending'}`}>
-                    {l.status} × {l.qty}
-                  </span>
-                </div>
-              ))
-            )}
-            <div style={{ marginTop: 10 }}>
-              <button className="link-btn" onClick={() => setRoute('production')}>
-                Go to Production Log →
-              </button>
-            </div>
-          </div>
+        <div className="two-col" style={{ marginBottom: 18 }}>
           <div className="card">
             <p className="section-title">Recent sales</p>
             {recentSales.length === 0 ? (
@@ -259,32 +226,98 @@ export default function Home({ data, setRoute, reload, role, brand, setBrand }) 
               recentSales.map((l) => (
                 <div className="activity-row" key={l.id}>
                   <span>
-                    {l.date} — {l.product_name} ({l.size})
+                    <span className="muted">{l.date}</span> {l.product_name} ({l.size})
                   </span>
-                  <span>
+                  <span className="num">
                     {l.channel} · {rupee(saleNet(l))}
                   </span>
                 </div>
               ))
             )}
             <div style={{ marginTop: 10 }}>
-              <button className="link-btn" onClick={() => setRoute('sales')}>
-                Go to Sales →
-              </button>
+              <button className="link-btn" onClick={() => setRoute('sales')}>Go to Sales →</button>
+            </div>
+          </div>
+          <div className="card">
+            <p className="section-title">Recent production</p>
+            {recentProd.length === 0 ? (
+              <div className="empty">No production logged yet.</div>
+            ) : (
+              recentProd.map((l) => (
+                <div className="activity-row" key={l.id}>
+                  <span>
+                    <span className="muted">{l.date}</span> {l.product_name} ({l.size})
+                  </span>
+                  <span className={`tag ${l.status === 'Ready' ? 'ready' : l.status === 'In Progress' ? 'progress' : 'pending'}`}>
+                    {l.status} × {l.qty}
+                  </span>
+                </div>
+              ))
+            )}
+            <div style={{ marginTop: 10 }}>
+              <button className="link-btn" onClick={() => setRoute('production')}>Go to Production Log →</button>
             </div>
           </div>
         </div>
+      )}
+
+      <div className="two-col">
+        {isAdmin && (
+          <div className="card" style={{ cursor: 'pointer' }} onClick={() => setRoute('settlements')}>
+            <p className="section-title">Settlements — all time, both brands</p>
+            <div className="kv"><span>Settled</span><strong className="num">{settledCount} · {rupee(settledTotal)}</strong></div>
+            <div className="kv"><span>Pending</span><strong className="num" style={{ color: 'var(--rust)' }}>{pendingCount} · {rupee(pendingTotal)}</strong></div>
+            <div className="link-btn" style={{ marginTop: 8, display: 'inline-block' }}>Go to Settlements →</div>
+          </div>
+        )}
+        <div className="card">
+          <p className="section-title">Last updated</p>
+          {lastUpdate ? (
+            <div style={{ fontSize: 14 }}>
+              <strong>{lastUpdate.name}</strong> — {lastUpdate.what}{' '}
+              <span className="muted">· {formatTimestamp(lastUpdate.ts)}</span>
+            </div>
+          ) : (
+            <div className="empty" style={{ padding: '6px 0' }}>
+              No updates logged yet — this fills in the next time someone saves a product or raw material.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isAdmin && (
+        <details className="card fold" style={{ marginTop: 18 }}>
+          <summary className="section-title">Settings · daily labour budget</summary>
+          <div className="mini-note" style={{ marginBottom: 8 }}>
+            Shared across every product's labour cost, both brands — change it as your tailor headcount or wages change,
+            and every product recalculates.
+          </div>
+          <div className="field-row" style={{ alignItems: 'flex-end', maxWidth: 360 }}>
+            <div className="field">
+              <label>Rs. per day</label>
+              <input type="number" step="any" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="e.g. 1100" />
+            </div>
+            <button className="btn secondary small" style={{ marginBottom: 12 }} onClick={saveBudget}>
+              Save
+            </button>
+          </div>
+        </details>
       )}
     </div>
   );
 }
 
-function Stat({ num, label, flag }) {
+function monthLabel(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+function Stat({ num, label, sub, strong }) {
   return (
-    <div className="stat-card">
-      <div className="stat-num">{num}</div>
+    <div className={`stat-card ${strong ? 'strong' : ''}`}>
       <div className="stat-label">{label}</div>
-      {flag && <div className="stat-flag">{flag}</div>}
+      <div className="stat-num">{num}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
     </div>
   );
 }

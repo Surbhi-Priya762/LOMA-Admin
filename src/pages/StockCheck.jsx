@@ -138,7 +138,7 @@ export default function StockCheck({ data, brand }) {
                         return (
                           <td key={s}>
                             <div style={{ fontWeight: 600 }}>{cur}</div>
-                            {short > 0 && <div style={{ color: 'var(--rust)', fontSize: 10.5, fontFamily: 'IBM Plex Mono' }}>need {short}</div>}
+                            {short > 0 && <div style={{ color: 'var(--rust)', fontSize: 12, fontWeight: 700 }}>need {short}</div>}
                           </td>
                         );
                       })}
