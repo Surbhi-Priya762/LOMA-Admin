@@ -319,3 +319,7 @@ select { text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Returned sales: kept visible but visually set aside (not counted in totals) */
+.data-table tr.row-returned td { color: var(--ink-soft); }
+.data-table tr.row-returned td:nth-child(2) { text-decoration: line-through; text-decoration-color: rgba(0,0,0,.35); }

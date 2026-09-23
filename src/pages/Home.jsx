@@ -38,7 +38,8 @@ export default function Home({ data, setRoute, reload, role, brand }) {
 
   const brandRows = (rows) => (brand === 'Combined' ? rows || [] : (rows || []).filter((r) => (r.brand || 'Loma') === brand));
   const periodProd = brandRows(productionLog).filter((l) => matchesPeriod(l.date)).reduce((a, l) => a + (Number(l.qty) || 0), 0);
-  const periodSales = brandRows(salesLog).filter((l) => matchesPeriod(l.date));
+  const cancelledSaleIds = new Set((settlements || []).filter((s) => s.status === 'Cancelled').map((s) => s.sale_id));
+  const periodSales = brandRows(salesLog).filter((l) => matchesPeriod(l.date) && l.return_exchange !== 'Returned' && !cancelledSaleIds.has(l.id));
   const periodUnits = periodSales.reduce((a, l) => a + (Number(l.qty) || 0), 0);
   const periodGross = periodSales.reduce((a, l) => a + (saleGross(l) || 0), 0);
   const periodNet = periodSales.reduce((a, l) => a + (saleNet(l) || 0), 0);

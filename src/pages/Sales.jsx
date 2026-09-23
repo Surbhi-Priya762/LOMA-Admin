@@ -14,12 +14,18 @@ export default function Sales({ data, reload, brand }) {
   // the marketplace rate doesn't usually depend on which brand is selling.
   const { commissions } = data;
   const SETTLE_STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
+  const RETURN_STATUSES = ['None', 'Returned', 'Exchanged'];
   const settlementForSale = (saleId) => settlements.find((s) => s.sale_id === saleId);
+  const isReturned = (l) => l.return_exchange === 'Returned';
+  // Not counted in totals: returned sales, and sales whose settlement was cancelled
+  // (order cancelled, or an exchange that isn't a new sale).
+  const notCounted = (l) => isReturned(l) || settlementForSale(l.id)?.status === 'Cancelled';
 
   const [range, setRange] = useState(() => rangeForPreset('this-month'));
   const [typeFilter, setTypeFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [returnFilter, setReturnFilter] = useState('All');
   const [editId, setEditId] = useState(null);
 
   const [productId, setProductId] = useState('');
@@ -41,13 +47,19 @@ export default function Sales({ data, reload, brand }) {
     if (!inDateRange(l.date, range)) return false;
     if (typeFilter !== 'All' && (l.sale_type || saleTypeForChannel(l.channel)) !== typeFilter) return false;
     if (channelFilter !== 'All' && l.channel !== channelFilter) return false;
+    if (returnFilter !== 'All' && (l.return_exchange || 'None') !== returnFilter) return false;
     if (q && !l.product_name.toLowerCase().includes(q) && !(l.channel || '').toLowerCase().includes(q)) return false;
     return true;
   });
   const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const totalGross = filtered.reduce((a, l) => a + (saleGross(l) || 0), 0);
-  const totalNet = filtered.reduce((a, l) => a + (saleNet(l) || 0), 0);
-  const totalUnits = filtered.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  // Returned sales stay in the list but are left out of the totals — the money went back.
+  const counted = filtered.filter((l) => !notCounted(l));
+  const returnedRows = filtered.filter(notCounted);
+  const totalGross = counted.reduce((a, l) => a + (saleGross(l) || 0), 0);
+  const totalNet = counted.reduce((a, l) => a + (saleNet(l) || 0), 0);
+  const totalUnits = counted.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const returnedUnits = returnedRows.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const returnedNet = returnedRows.reduce((a, l) => a + (saleNet(l) || 0), 0);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
@@ -152,6 +164,20 @@ export default function Sales({ data, reload, brand }) {
     reload();
   }
 
+  async function changeReturnStatus(sale, value) {
+    await updateSale({ ...sale, return_exchange: value });
+    const existing = settlementForSale(sale.id);
+    if (value === 'Returned' && existing && existing.status !== 'Cancelled') {
+      const ok = await confirm(
+        `Also mark the settlement for this sale as Cancelled?\n\n${sale.product_name} (${sale.size}) · ${sale.channel} · ${sale.date}\n\nChoose this if the marketplace took the money back.`,
+        'Cancel settlement'
+      );
+      if (ok) await updateSettlement({ ...existing, status: 'Cancelled', received_amount: 0, cancel_reason: existing.cancel_reason || `Returned (${sale.channel})` });
+    }
+    toast(value === 'Returned' ? 'Marked returned. Log the piece in Inward when it arrives.' : 'Updated.');
+    reload();
+  }
+
   async function changeSettlementStatus(sale, newStatus) {
     const existing = settlementForSale(sale.id);
     if (existing) {
@@ -213,6 +239,7 @@ export default function Sales({ data, reload, brand }) {
         { key: (l) => fmt(saleGross(l)) ?? '', label: 'Gross' },
         { key: (l) => fmt(saleNet(l)) ?? '', label: 'Net' },
         { key: (l) => (l.stock_affected === false ? 'No' : 'Yes'), label: 'Stock Affected' },
+        { key: (l) => l.return_exchange || 'None', label: 'Return/Exchange' },
       ],
       `loma-sales-${rangeLabel(range)}.csv`
     );
@@ -349,10 +376,17 @@ export default function Sales({ data, reload, brand }) {
         ))}
       </div>
 
+      <div className="tabs-row">
+        {['All', 'None', 'Returned', 'Exchanged'].map((r) => (
+          <div className={`pill ${returnFilter === r ? 'active' : ''}`} key={r} onClick={() => setReturnFilter(r)}>{r === 'All' ? 'All sales' : r === 'None' ? 'No return' : r}</div>
+        ))}
+      </div>
+
       <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))' }}>
         <div className="stat-card"><div className="stat-num">{totalUnits}</div><div className="stat-label">Units sold (filtered)</div></div>
         <div className="stat-card"><div className="stat-num">{rupee(totalGross)}</div><div className="stat-label">Gross sale (filtered)</div></div>
         <div className="stat-card"><div className="stat-num">{rupee(totalNet)}</div><div className="stat-label">Net sale, after commission (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{returnedUnits}</div><div className="stat-label">Returned or cancelled{returnedUnits ? ` · ${rupee(returnedNet)} not counted` : ''}</div></div>
       </div>
 
       <div className="field-row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
@@ -367,16 +401,16 @@ export default function Sales({ data, reload, brand }) {
       </div>
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th>Settlement status</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th>Settlement status</th><th>Return / Exchange</th><th></th></tr></thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={11} className="empty">No sales match your filters.</td></tr>
+              <tr><td colSpan={12} className="empty">No sales match your filters.</td></tr>
             ) : (
               sorted.map((l) => {
                 const settlement = settlementForSale(l.id);
                 const settleStatus = settlement ? settlement.status || 'Pending' : null;
                 return (
-                <tr key={l.id}>
+                <tr key={l.id} className={notCounted(l) ? 'row-returned' : ''}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
                   <td>{l.sale_type || saleTypeForChannel(l.channel) || '—'}{l.stock_affected === false ? ' (no stock)' : ''}</td>
                   <td>{l.channel}</td>
@@ -428,9 +462,22 @@ export default function Sales({ data, reload, brand }) {
                       {SETTLE_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                     </select>
                   </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
-                    <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                  <td>
+                    <select
+                      key={`re-${l.id}-${l.return_exchange}`}
+                      defaultValue={l.return_exchange || 'None'}
+                      onChange={(e) => changeReturnStatus(l, e.target.value)}
+                      className={`tag ${l.return_exchange === 'Returned' ? 'reorder' : l.return_exchange === 'Exchanged' ? 'progress' : 'ok'}`}
+                      style={{ border: '1px solid var(--line)' }}
+                    >
+                      {RETURN_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
+                      <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                    </div>
                   </td>
                 </tr>
                 );
@@ -440,8 +487,8 @@ export default function Sales({ data, reload, brand }) {
           {sorted.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={3}>Total ({sorted.length} sale{sorted.length === 1 ? '' : 's'} shown)</td>
-                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td><td></td>
+                <td colSpan={3}>Total ({counted.length} sale{counted.length === 1 ? '' : 's'}{returnedRows.length ? `, ${returnedRows.length} returned/cancelled not counted` : ''})</td>
+                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td><td></td><td></td>
               </tr>
             </tfoot>
           )}
