@@ -15,7 +15,7 @@ function daysBetween(a, b) {
 }
 
 export default function ProductionLog({ data, reload, brand }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const products = filterByBrand(data.products, brand);
   const productionLog = filterByBrand(data.productionLog, brand);
   const qualityChecks = filterByBrand(data.qualityChecks, brand);
@@ -27,11 +27,23 @@ export default function ProductionLog({ data, reload, brand }) {
   const [status, setStatus] = useState('Ready');
   const [date, setDate] = useState(todayStr());
   const [remarks, setRemarks] = useState('');
+  const [search, setSearch] = useState('');
 
   const selectedProduct = products.find((p) => p.id === productId);
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
 
-  const sorted = [...productionLog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const q = search.toLowerCase();
+  const sorted = [...productionLog]
+    .filter((l) => {
+      if (!q) return true;
+      return (
+        (l.product_name || '').toLowerCase().includes(q) ||
+        (l.size || '').toLowerCase().includes(q) ||
+        (l.status || '').toLowerCase().includes(q) ||
+        (l.remarks || '').toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   function handleExport() {
     exportToExcel(
@@ -62,12 +74,12 @@ export default function ProductionLog({ data, reload, brand }) {
   async function handleSubmit() {
     if (!selectedProduct) { toast('Select a product first.'); return; }
     if (!size) { toast('Select a size.'); return; }
-    const q = Number(qty) || 0;
-    if (q <= 0) { toast('Enter a quantity.'); return; }
+    const qNum = Number(qty) || 0;
+    if (qNum <= 0) { toast('Enter a quantity.'); return; }
 
     const entry = {
       id: uid('log'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
-      size, qty: q, status, remarks: remarks.trim(),
+      size, qty: qNum, status, remarks: remarks.trim(),
       ready_date: status === 'Ready' ? todayStr() : null,
       brand,
     };
@@ -75,9 +87,9 @@ export default function ProductionLog({ data, reload, brand }) {
 
     if (status === 'Ready') {
       await createQualityCheck(entry);
-      toast(`Logged ${q} × ${selectedProduct.name} (${size}) — sent to Quality Check.`);
+      toast(`Logged ${qNum} × ${selectedProduct.name} (${size}) — sent to Quality Check.`);
     } else {
-      toast(`Logged ${q} × ${selectedProduct.name} (${size}).`);
+      toast(`Logged ${qNum} × ${selectedProduct.name} (${size}).`);
     }
     setRemarks('');
     reload();
@@ -111,6 +123,11 @@ export default function ProductionLog({ data, reload, brand }) {
   }
 
   async function handleUndo(entry) {
+    const ok = await confirm(
+      `Undo this production entry?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) · ${entry.date}\n\nThis also removes its Quality Check entry.`,
+      'Undo entry'
+    );
+    if (!ok) return;
     await deleteQualityCheckByProductionLog(entry.id);
     await deleteProductionLog(entry.id);
     toast('Entry undone.');
@@ -119,9 +136,9 @@ export default function ProductionLog({ data, reload, brand }) {
 
   let preview = null;
   if (selectedProduct && size && qty) {
-    const q = Number(qty) || 0;
+    const qNum = Number(qty) || 0;
     if (selectedProduct.fabric_name && selectedProduct.fabric_qty != null) {
-      const need = Number(selectedProduct.fabric_qty) * q;
+      const need = Number(selectedProduct.fabric_qty) * qNum;
       const mat = materials.find((m) => m.name === selectedProduct.fabric_name);
       const currentStock = mat && mat.stock != null ? Number(mat.stock) - materialTotalIssued(mat, products, productionLog) : null;
       preview = (
@@ -147,7 +164,7 @@ export default function ProductionLog({ data, reload, brand }) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log a new entry</p>
         <div className="field-row">
           <div className="field">
@@ -181,6 +198,13 @@ export default function ProductionLog({ data, reload, brand }) {
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log entry</button>
       </div>
 
+      <div className="field-row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+        <div className="field" style={{ maxWidth: 340 }}>
+          <label>Search</label>
+          <input className="search-input" placeholder="Search by product, size, status, or remarks…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+      </div>
+
       <div className="table-wrap">
         <table className="data-table">
           <thead>
@@ -191,7 +215,7 @@ export default function ProductionLog({ data, reload, brand }) {
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={9} className="empty">No entries yet.</td></tr>
+              <tr><td colSpan={9} className="empty">No entries match{search ? ' your search' : ''}.</td></tr>
             ) : (
               sorted.map((l) => {
                 const days = daysBetween(l.date, l.ready_date);
