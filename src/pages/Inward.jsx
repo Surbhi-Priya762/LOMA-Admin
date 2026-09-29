@@ -6,7 +6,7 @@ import { useUI } from '../context/UIContext';
 const SOURCES = [...CHANNELS, 'Customer', 'Vendor'];
 
 export default function Inward({ data, reload, brand }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const products = filterByBrand(data.products, brand);
   const inward = filterByBrand(data.inward, brand);
   const [date, setDate] = useState(todayStr());
@@ -62,6 +62,11 @@ export default function Inward({ data, reload, brand }) {
   }
 
   async function handleUndo(entry) {
+    const ok = await confirm(
+      `Undo this inward entry?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) from ${entry.source} · ${entry.date}\n\nThis takes the pieces back out of stock.`,
+      'Undo entry'
+    );
+    if (!ok) return;
     const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
     if (p) {
       const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) - Number(entry.qty)) } : s)) };
@@ -85,7 +90,7 @@ export default function Inward({ data, reload, brand }) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log an inward entry</p>
         <div className="field-row">
           <div className="field"><label>Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, exportToExcel } from '../lib/calc';
+import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, exportToExcel, sizeStock, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
+import DateFilter from '../components/DateFilter';
 import { addSale, updateSale, deleteSale, saveProduct, addSettlement, deleteSettlementBySale } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import BrandGate from '../components/BrandGate';
@@ -7,8 +8,8 @@ import BrandGate from '../components/BrandGate';
 const RETURN_STATUSES = ['None', 'Returned', 'Exchanged'];
 
 export default function CASales({ data, reload, brand, setBrand }) {
-  const { toast } = useUI();
-  const [monthFilter, setMonthFilter] = useState('All');
+  const { toast, confirm } = useUI();
+  const [range, setRange] = useState(() => rangeForPreset('this-month'));
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
 
@@ -29,7 +30,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
   const allMonths = Array.from(new Set(salesLog.map((l) => (l.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
   const filtered = salesLog.filter((l) => {
-    if (monthFilter !== 'All' && (l.date || '').slice(0, 7) !== monthFilter) return false;
+    if (!inDateRange(l.date, range)) return false;
     if (channelFilter !== 'All' && l.channel !== channelFilter) return false;
     if (q && !l.product_name.toLowerCase().includes(q) && !(l.channel || '').toLowerCase().includes(q)) return false;
     return true;
@@ -60,19 +61,33 @@ export default function CASales({ data, reload, brand, setBrand }) {
     const q = Number(qty) || 0;
     if (q <= 0) { toast('Enter a quantity.'); return; }
 
+    const stockAffected = saleType !== 'Onhand';
+    if (stockAffected) {
+      const available = sizeStock(selectedProduct, size);
+      if (q > available) {
+        const ok = await confirm(
+          `Only ${available} in stock for ${selectedProduct.name} (${size}), but you're logging ${q}.\n\nSaving will take stock below zero (to ${available - q}). Save anyway?`,
+          'Save anyway'
+        );
+        if (!ok) return;
+      }
+    }
+
     const grossNum = gross === '' ? null : Number(gross);
     const netNum = net === '' ? grossNum : Number(net);
     const entry = {
       id: uid('sale'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
-      size, qty: q, channel, sale_type: saleType, brand,
+      size, qty: q, channel, sale_type: saleType, brand, stock_affected: stockAffected,
       gross_amount: grossNum, net_amount: netNum,
       price: gross === '' ? null : Number(gross) / q,
       return_exchange: 'None',
     };
     await addSale(entry);
-    const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
-    delete updated.updated_at;
-    await saveProduct(updated);
+    if (stockAffected) {
+      const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
+      delete updated.updated_at;
+      await saveProduct(updated);
+    }
 
     // keeps this in sync with the main Sales/Settlements pages behind the scenes —
     // not shown here, but admin will see it correctly on Settlements.
@@ -93,7 +108,12 @@ export default function CASales({ data, reload, brand, setBrand }) {
   }
 
   async function handleUndo(entry) {
-    const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
+    const ok = await confirm(
+      `Undo this sale?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) · ${entry.channel} · ${entry.date}\n\nThis deletes the sale and puts the stock back.`,
+      'Undo sale'
+    );
+    if (!ok) return;
+    const p = entry.stock_affected !== false ? products.find((x) => x.id === entry.product_id || x.name === entry.product_name) : null;
     if (p) {
       const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: (Number(s.stock) || 0) + Number(entry.qty) } : s)) };
       delete updated.updated_at;
@@ -131,7 +151,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
         { key: (l) => fmt(saleNet(l)) ?? '', label: 'Net' },
         { key: (l) => l.return_exchange || 'None', label: 'Return/Exchange' },
       ],
-      `loma-ca-sales-${brand}-${todayStr()}.csv`
+      `loma-ca-sales-${brand}-${rangeLabel(range)}.csv`
     );
   }
 
@@ -147,12 +167,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
         </div>
       </div>
 
-      <div className="tabs-row">
-        <div className={`pill ${monthFilter === 'All' ? 'active' : ''}`} onClick={() => setMonthFilter('All')}>All months</div>
-        {allMonths.map((m) => (
-          <div className={`pill ${monthFilter === m ? 'active' : ''}`} key={m} onClick={() => setMonthFilter(m)}>{m}</div>
-        ))}
-      </div>
+      <DateFilter value={range} onChange={setRange} months={allMonths} />
       <div className="tabs-row">
         <div className={`pill ${channelFilter === 'All' ? 'active' : ''}`} onClick={() => setChannelFilter('All')}>All channels</div>
         {CHANNELS.map((c) => (
@@ -166,7 +181,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
         <div className="stat-card"><div className="stat-num">{rupee(totalNet)}</div><div className="stat-label">Net sale (filtered)</div></div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log a sale</p>
         <div className="field-row">
           <div className="field">
@@ -180,7 +195,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
             <label>Size</label>
             <select value={size} onChange={(e) => setSize(e.target.value)}>
               <option value="">—</option>
-              {sizeOptions.map((s) => <option value={s} key={s}>{s}</option>)}
+              {sizeOptions.map((s) => <option value={s} key={s}>{selectedProduct ? `${s} — ${sizeStock(selectedProduct, s)} in stock` : s}</option>)}
             </select>
           </div>
           <div className="field"><label>Qty</label><input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} /></div>

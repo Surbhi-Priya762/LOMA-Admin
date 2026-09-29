@@ -86,9 +86,11 @@ export function fmt(n) {
   if (Number.isNaN(num)) return null;
   return Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.?0+$/, '');
 }
+// Display only (exports use fmt): Indian digit grouping, e.g. Rs.1,23,456.5
 export function rupee(n) {
   const f = fmt(n);
-  return f == null ? '—' : `Rs.${f}`;
+  if (f == null) return '—';
+  return `Rs.${Number(f).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
 export function materialLineCost(p, cat) {
@@ -162,7 +164,8 @@ export function productTotalStock(p) {
 }
 
 export function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  // Local date (IST), not UTC — so entries made before 5:30am don't land on yesterday.
+  return isoLocal(new Date());
 }
 
 export function formatTimestamp(ts) {
@@ -247,4 +250,59 @@ export function exportToExcel(rows, columns, filename) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+// ---------- Date range filter helpers ----------
+// A range is { preset, from, to } with from/to as 'YYYY-MM-DD' (or null = open-ended).
+function isoLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+export function rangeForPreset(preset) {
+  const now = new Date();
+  if (preset === 'this-month') {
+    return { preset, from: isoLocal(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoLocal(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
+  }
+  if (preset === 'last-month') {
+    return { preset, from: isoLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: isoLocal(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  }
+  if (preset === 'last-7') {
+    const from = new Date(now); from.setDate(from.getDate() - 6);
+    return { preset, from: isoLocal(from), to: isoLocal(now) };
+  }
+  if (preset === 'last-30') {
+    const from = new Date(now); from.setDate(from.getDate() - 29);
+    return { preset, from: isoLocal(from), to: isoLocal(now) };
+  }
+  return { preset: 'all', from: null, to: null };
+}
+export function rangeForMonth(month) {
+  const [y, m] = month.split('-').map(Number);
+  return { preset: `month:${month}`, from: isoLocal(new Date(y, m - 1, 1)), to: isoLocal(new Date(y, m, 0)) };
+}
+export function inDateRange(dateStr, range) {
+  if (!range || (!range.from && !range.to)) return true;
+  if (!dateStr) return false;
+  const d = dateStr.slice(0, 10);
+  if (range.from && d < range.from) return false;
+  if (range.to && d > range.to) return false;
+  return true;
+}
+export function rangeLabel(range) {
+  if (!range || range.preset === 'all') return 'all-time';
+  if (range.from && range.to) return `${range.from}_to_${range.to}`;
+  if (range.from) return `from-${range.from}`;
+  if (range.to) return `until-${range.to}`;
+  return 'all-time';
+}
+export function monthName(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+// Stock currently held for one size of a product.
+export function sizeStock(product, size) {
+  const s = (product?.sizes || []).find((x) => x.size === size);
+  return s ? Number(s.stock) || 0 : 0;
 }

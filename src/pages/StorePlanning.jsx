@@ -73,6 +73,8 @@ export default function StorePlanning({ data, reload, brand }) {
   }
 
   async function handleDeleteExtra(id) {
+    const ok = await confirm('Remove this item from the store plan?', 'Remove');
+    if (!ok) return;
     await deleteStorePlanExtra(id);
     reload();
   }
@@ -217,7 +219,7 @@ export default function StorePlanning({ data, reload, brand }) {
 
       <div className="card" style={{ borderColor: 'var(--brass)' }}>
         <p className="section-title">Grand total</p>
-        <div style={{ fontFamily: 'IBM Plex Mono', fontSize: 22, fontWeight: 600, color: 'var(--brass)' }}>{rupee(grandTotal)}</div>
+        <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--brass)' }}>{rupee(grandTotal)}</div>
         <div className="mini-note">All fabrics' style costs, plus extras, at {piecesPerSize} pieces per size.</div>
       </div>
     </div>

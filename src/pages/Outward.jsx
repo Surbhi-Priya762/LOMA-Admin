@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { SIZES, todayStr, uid, exportToExcel, filterByBrand } from '../lib/calc';
+import { SIZES, todayStr, uid, exportToExcel, filterByBrand, sizeStock } from '../lib/calc';
 import { addOutward, deleteOutward, saveProduct } from '../lib/api';
 import { useUI } from '../context/UIContext';
 
 export default function Outward({ data, reload, brand }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const products = filterByBrand(data.products, brand);
   const outward = filterByBrand(data.outward, brand);
   const [date, setDate] = useState(todayStr());
@@ -44,6 +44,14 @@ export default function Outward({ data, reload, brand }) {
     const qn = Number(qty) || 0;
     if (qn <= 0) { toast('Enter a quantity.'); return; }
     if (!personName.trim()) { toast("Enter who this went to."); return; }
+    const available = sizeStock(selectedProduct, size);
+    if (qn > available) {
+      const ok = await confirm(
+        `Only ${available} in stock for ${selectedProduct.name} (${size}), but you're sending out ${qn}.\n\nSaving will take stock below zero (to ${available - qn}). Save anyway?`,
+        'Save anyway'
+      );
+      if (!ok) return;
+    }
 
     const entry = {
       id: uid('out'), date, product_id: selectedProduct.id, product_name: selectedProduct.name,
@@ -52,7 +60,7 @@ export default function Outward({ data, reload, brand }) {
     };
     await addOutward(entry);
 
-    const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) - qn) } : s)) };
+    const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - qn } : s)) };
     delete updated.updated_at;
     await saveProduct(updated);
 
@@ -62,6 +70,11 @@ export default function Outward({ data, reload, brand }) {
   }
 
   async function handleUndo(entry) {
+    const ok = await confirm(
+      `Undo this outward entry?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) to ${entry.person_name} · ${entry.date}\n\nThis puts the pieces back in stock.`,
+      'Undo entry'
+    );
+    if (!ok) return;
     const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
     if (p) {
       const updated = { ...p, sizes: p.sizes.map((s) => (s.size === entry.size ? { ...s, stock: (Number(s.stock) || 0) + Number(entry.qty) } : s)) };
@@ -104,7 +117,7 @@ export default function Outward({ data, reload, brand }) {
             <label>Size</label>
             <select value={size} onChange={(e) => setSize(e.target.value)}>
               <option value="">—</option>
-              {sizeOptions.map((s) => <option value={s} key={s}>{s}</option>)}
+              {sizeOptions.map((s) => <option value={s} key={s}>{selectedProduct ? `${s} — ${sizeStock(selectedProduct, s)} in stock` : s}</option>)}
             </select>
           </div>
           <div className="field"><label>Qty</label><input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} /></div>

@@ -55,24 +55,24 @@ export default function Login({ onSuccess }) {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'var(--bg)',
-        backgroundImage: 'repeating-linear-gradient(90deg, rgba(38,36,30,.03) 0 1px, transparent 1px 44px)',
+        padding: 16,
       }}
     >
-      <form className="card" style={{ width: 340 }} onSubmit={handleSubmit}>
+      <form className="card" style={{ width: 360, maxWidth: '100%', padding: 24 }} onSubmit={handleSubmit}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-          <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2px solid var(--indigo)' }} />
+          <div className="brand-mark" style={{ background: 'var(--side)', color: '#e8efea' }} aria-hidden="true">L</div>
           <div>
-            <div style={{ fontFamily: 'Oswald', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, fontSize: 15 }}>Lõma</div>
-            <div style={{ fontSize: 10, color: 'var(--ink-soft)', letterSpacing: '.04em' }}>Production Studio</div>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>Lõma</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Production Studio</div>
           </div>
         </div>
         <div className="field">
           <label>Username</label>
-          <input value={user} onChange={(e) => setUser(e.target.value)} autoFocus />
+          <input value={user} onChange={(e) => setUser(e.target.value)} autoFocus autoCapitalize="characters" autoComplete="username" />
         </div>
         <div className="field">
           <label>Password</label>
-          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} />
+          <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="current-password" />
         </div>
         {error && <div style={{ color: 'var(--rust)', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
         <button className="btn" type="submit" style={{ width: '100%' }}>Log in</button>

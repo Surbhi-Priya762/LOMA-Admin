@@ -80,7 +80,8 @@ export function UIProvider({ children }) {
                   Cancel
                 </button>
                 <button
-                  className="btn"
+                  autoFocus
+                  className={`btn ${/delete|undo|remove/i.test(confirmState.yesLabel) ? 'danger-solid' : ''}`}
                   onClick={() => {
                     confirmState.resolve(true);
                     setConfirmState(null);

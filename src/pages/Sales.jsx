@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel, filterByBrand } from '../lib/calc';
+import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel, filterByBrand, sizeStock, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
+import DateFilter from '../components/DateFilter';
 import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import SalesEditModal from './SalesEditModal';
 
 export default function Sales({ data, reload, brand }) {
-  const { toast } = useUI();
+  const { toast, confirm } = useUI();
   const products = filterByBrand(data.products, brand);
   const salesLog = filterByBrand(data.salesLog, brand);
   const settlements = filterByBrand(data.settlements, brand);
@@ -13,12 +14,18 @@ export default function Sales({ data, reload, brand }) {
   // the marketplace rate doesn't usually depend on which brand is selling.
   const { commissions } = data;
   const SETTLE_STATUSES = ['Pending', 'Invoice Sent', 'Partial', 'Settled', 'Cancelled'];
+  const RETURN_STATUSES = ['None', 'Returned', 'Exchanged'];
   const settlementForSale = (saleId) => settlements.find((s) => s.sale_id === saleId);
+  const isReturned = (l) => l.return_exchange === 'Returned';
+  // Not counted in totals: returned sales, and sales whose settlement was cancelled
+  // (order cancelled, or an exchange that isn't a new sale).
+  const notCounted = (l) => isReturned(l) || settlementForSale(l.id)?.status === 'Cancelled';
 
-  const [monthFilter, setMonthFilter] = useState('All');
+  const [range, setRange] = useState(() => rangeForPreset('this-month'));
   const [typeFilter, setTypeFilter] = useState('All');
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [returnFilter, setReturnFilter] = useState('All');
   const [editId, setEditId] = useState(null);
 
   const [productId, setProductId] = useState('');
@@ -37,16 +44,22 @@ export default function Sales({ data, reload, brand }) {
   const allMonths = Array.from(new Set(salesLog.map((l) => (l.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
   const q = search.toLowerCase();
   const filtered = salesLog.filter((l) => {
-    if (monthFilter !== 'All' && (l.date || '').slice(0, 7) !== monthFilter) return false;
+    if (!inDateRange(l.date, range)) return false;
     if (typeFilter !== 'All' && (l.sale_type || saleTypeForChannel(l.channel)) !== typeFilter) return false;
     if (channelFilter !== 'All' && l.channel !== channelFilter) return false;
+    if (returnFilter !== 'All' && (l.return_exchange || 'None') !== returnFilter) return false;
     if (q && !l.product_name.toLowerCase().includes(q) && !(l.channel || '').toLowerCase().includes(q)) return false;
     return true;
   });
   const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const totalGross = filtered.reduce((a, l) => a + (saleGross(l) || 0), 0);
-  const totalNet = filtered.reduce((a, l) => a + (saleNet(l) || 0), 0);
-  const totalUnits = filtered.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  // Returned sales stay in the list but are left out of the totals — the money went back.
+  const counted = filtered.filter((l) => !notCounted(l));
+  const returnedRows = filtered.filter(notCounted);
+  const totalGross = counted.reduce((a, l) => a + (saleGross(l) || 0), 0);
+  const totalNet = counted.reduce((a, l) => a + (saleNet(l) || 0), 0);
+  const totalUnits = counted.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const returnedUnits = returnedRows.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+  const returnedNet = returnedRows.reduce((a, l) => a + (saleNet(l) || 0), 0);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
@@ -82,6 +95,16 @@ export default function Sales({ data, reload, brand }) {
     if (q <= 0) { toast('Enter a quantity.'); return; }
 
     const stockAffected = saleType !== 'Onhand';
+    if (stockAffected) {
+      const available = sizeStock(selectedProduct, size);
+      if (q > available) {
+        const ok = await confirm(
+          `Only ${available} in stock for ${selectedProduct.name} (${size}), but you're logging ${q}.\n\nSaving will take stock below zero (to ${available - q}). Save anyway?`,
+          'Save anyway'
+        );
+        if (!ok) return;
+      }
+    }
 
     const grossNum = gross === '' ? null : Number(gross);
     const netNum = net === '' ? null : Number(net);
@@ -122,6 +145,11 @@ export default function Sales({ data, reload, brand }) {
 
   async function handleUndo(entry) {
     const stockAffected = entry.stock_affected !== false; // older rows without the flag default to true
+    const ok = await confirm(
+      `Undo this sale?\n\n${entry.qty} × ${entry.product_name} (${entry.size}) · ${entry.channel} · ${entry.date}\n\nThis deletes the sale and its settlement record${stockAffected ? ', and puts the stock back' : ''}.`,
+      'Undo sale'
+    );
+    if (!ok) return;
     if (stockAffected) {
       const p = products.find((x) => x.id === entry.product_id || x.name === entry.product_name);
       if (p) {
@@ -133,6 +161,20 @@ export default function Sales({ data, reload, brand }) {
     await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
     toast(stockAffected ? 'Sale undone, stock restored.' : 'Onhand sale undone.');
+    reload();
+  }
+
+  async function changeReturnStatus(sale, value) {
+    await updateSale({ ...sale, return_exchange: value });
+    const existing = settlementForSale(sale.id);
+    if (value === 'Returned' && existing && existing.status !== 'Cancelled') {
+      const ok = await confirm(
+        `Also mark the settlement for this sale as Cancelled?\n\n${sale.product_name} (${sale.size}) · ${sale.channel} · ${sale.date}\n\nChoose this if the marketplace took the money back.`,
+        'Cancel settlement'
+      );
+      if (ok) await updateSettlement({ ...existing, status: 'Cancelled', received_amount: 0, cancel_reason: existing.cancel_reason || `Returned (${sale.channel})` });
+    }
+    toast(value === 'Returned' ? 'Marked returned. Log the piece in Inward when it arrives.' : 'Updated.');
     reload();
   }
 
@@ -197,8 +239,9 @@ export default function Sales({ data, reload, brand }) {
         { key: (l) => fmt(saleGross(l)) ?? '', label: 'Gross' },
         { key: (l) => fmt(saleNet(l)) ?? '', label: 'Net' },
         { key: (l) => (l.stock_affected === false ? 'No' : 'Yes'), label: 'Stock Affected' },
+        { key: (l) => l.return_exchange || 'None', label: 'Return/Exchange' },
       ],
-      `loma-sales-${todayStr()}.csv`
+      `loma-sales-${rangeLabel(range)}.csv`
     );
     toast('Sales exported — opens directly in Excel.');
   }
@@ -215,71 +258,7 @@ export default function Sales({ data, reload, brand }) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 18 }}>
-        <p className="section-title">Default commission, per channel</p>
-        <div className="mini-note" style={{ marginBottom: 10 }}>
-          This is just the starting point that fills in when you pick a channel below — every sale has its own commission box you can still change per order.
-        </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Channel</th><th>Type</th><th>Value</th></tr></thead>
-            <tbody>
-              {CHANNELS.map((ch) => {
-                const c = channelDefault(ch);
-                return (
-                  <tr key={ch}>
-                    <td>{ch}</td>
-                    <td>
-                      <select key={`ct-${ch}-${c.type}`} defaultValue={c.type} onChange={(e) => updateChannelDefault(ch, 'type', e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}>
-                        <option value="None">None</option>
-                        <option value="Percentage">Percentage</option>
-                        <option value="Flat">Flat amount</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        key={`cv-${ch}-${c.value}`}
-                        type="number" step="any" defaultValue={c.value ?? ''}
-                        placeholder={c.type === 'Percentage' ? 'e.g. 40' : c.type === 'Flat' ? 'e.g. 336' : '—'}
-                        disabled={c.type === 'None'}
-                        onBlur={(e) => updateChannelDefault(ch, 'value', e.target.value === '' ? null : Number(e.target.value))}
-                        style={{ width: 100, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="tabs-row">
-        <div className={`pill ${monthFilter === 'All' ? 'active' : ''}`} onClick={() => setMonthFilter('All')}>All months</div>
-        {allMonths.map((m) => (
-          <div className={`pill ${monthFilter === m ? 'active' : ''}`} key={m} onClick={() => setMonthFilter(m)}>{m}</div>
-        ))}
-      </div>
-      <div className="tabs-row">
-        <div className={`pill ${typeFilter === 'All' ? 'active' : ''}`} onClick={() => setTypeFilter('All')}>All types</div>
-        {SALE_TYPES.map((t) => (
-          <div className={`pill ${typeFilter === t ? 'active' : ''}`} key={t} onClick={() => setTypeFilter(t)}>{t}</div>
-        ))}
-      </div>
-      <div className="tabs-row">
-        <div className={`pill ${channelFilter === 'All' ? 'active' : ''}`} onClick={() => setChannelFilter('All')}>All channels</div>
-        {CHANNELS.map((c) => (
-          <div className={`pill ${channelFilter === c ? 'active' : ''}`} key={c} onClick={() => setChannelFilter(c)}>{c}</div>
-        ))}
-      </div>
-
-      <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))' }}>
-        <div className="stat-card"><div className="stat-num">{totalUnits}</div><div className="stat-label">Units sold (filtered)</div></div>
-        <div className="stat-card"><div className="stat-num">{rupee(totalGross)}</div><div className="stat-label">Gross sale (filtered)</div></div>
-        <div className="stat-card"><div className="stat-num">{rupee(totalNet)}</div><div className="stat-label">Net sale, after commission (filtered)</div></div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card add-form" id="add-form" style={{ marginBottom: 20 }}>
         <p className="section-title">Log a sale</p>
         <div className="field-row">
           <div className="field">
@@ -293,7 +272,7 @@ export default function Sales({ data, reload, brand }) {
             <label>Size</label>
             <select value={size} onChange={(e) => setSize(e.target.value)}>
               <option value="">—</option>
-              {sizeOptions.map((s) => <option value={s} key={s}>{s}</option>)}
+              {sizeOptions.map((s) => <option value={s} key={s}>{selectedProduct ? `${s} — ${sizeStock(selectedProduct, s)} in stock` : s}</option>)}
             </select>
           </div>
           <div className="field"><label>Qty</label><input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
@@ -344,6 +323,72 @@ export default function Sales({ data, reload, brand }) {
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
+      <details className="card fold" style={{ marginBottom: 18 }}>
+        <summary className="section-title">Default commission, per channel</summary>
+        <div className="mini-note" style={{ marginBottom: 10 }}>
+          This is just the starting point that fills in when you pick a channel below — every sale has its own commission box you can still change per order.
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Channel</th><th>Type</th><th>Value</th></tr></thead>
+            <tbody>
+              {CHANNELS.map((ch) => {
+                const c = channelDefault(ch);
+                return (
+                  <tr key={ch}>
+                    <td>{ch}</td>
+                    <td>
+                      <select key={`ct-${ch}-${c.type}`} defaultValue={c.type} onChange={(e) => updateChannelDefault(ch, 'type', e.target.value)} style={{ padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}>
+                        <option value="None">None</option>
+                        <option value="Percentage">Percentage</option>
+                        <option value="Flat">Flat amount</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        key={`cv-${ch}-${c.value}`}
+                        type="number" step="any" defaultValue={c.value ?? ''}
+                        placeholder={c.type === 'Percentage' ? 'e.g. 40' : c.type === 'Flat' ? 'e.g. 336' : '—'}
+                        disabled={c.type === 'None'}
+                        onBlur={(e) => updateChannelDefault(ch, 'value', e.target.value === '' ? null : Number(e.target.value))}
+                        style={{ width: 100, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <DateFilter value={range} onChange={setRange} months={allMonths} />
+      <div className="tabs-row">
+        <div className={`pill ${typeFilter === 'All' ? 'active' : ''}`} onClick={() => setTypeFilter('All')}>All types</div>
+        {SALE_TYPES.map((t) => (
+          <div className={`pill ${typeFilter === t ? 'active' : ''}`} key={t} onClick={() => setTypeFilter(t)}>{t}</div>
+        ))}
+      </div>
+      <div className="tabs-row">
+        <div className={`pill ${channelFilter === 'All' ? 'active' : ''}`} onClick={() => setChannelFilter('All')}>All channels</div>
+        {CHANNELS.map((c) => (
+          <div className={`pill ${channelFilter === c ? 'active' : ''}`} key={c} onClick={() => setChannelFilter(c)}>{c}</div>
+        ))}
+      </div>
+
+      <div className="tabs-row">
+        {['All', 'None', 'Returned', 'Exchanged'].map((r) => (
+          <div className={`pill ${returnFilter === r ? 'active' : ''}`} key={r} onClick={() => setReturnFilter(r)}>{r === 'All' ? 'All sales' : r === 'None' ? 'No return' : r}</div>
+        ))}
+      </div>
+
+      <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))' }}>
+        <div className="stat-card"><div className="stat-num">{totalUnits}</div><div className="stat-label">Units sold (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{rupee(totalGross)}</div><div className="stat-label">Gross sale (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{rupee(totalNet)}</div><div className="stat-label">Net sale, after commission (filtered)</div></div>
+        <div className="stat-card"><div className="stat-num">{returnedUnits}</div><div className="stat-label">Returned or cancelled{returnedUnits ? ` · ${rupee(returnedNet)} not counted` : ''}</div></div>
+      </div>
+
       <div className="field-row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
         <div className="field" style={{ maxWidth: 340 }}>
           <label>Search by marketplace or product</label>
@@ -356,16 +401,16 @@ export default function Sales({ data, reload, brand }) {
       </div>
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th>Settlement status</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Product</th><th>Size</th><th>Qty</th><th>Type</th><th>Channel</th><th>Commission</th><th>Gross</th><th>Net</th><th>Settlement status</th><th>Return / Exchange</th><th></th></tr></thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={11} className="empty">No sales match your filters.</td></tr>
+              <tr><td colSpan={12} className="empty">No sales match your filters.</td></tr>
             ) : (
               sorted.map((l) => {
                 const settlement = settlementForSale(l.id);
                 const settleStatus = settlement ? settlement.status || 'Pending' : null;
                 return (
-                <tr key={l.id}>
+                <tr key={l.id} className={notCounted(l) ? 'row-returned' : ''}>
                   <td>{l.date}</td><td>{l.product_name}</td><td>{l.size}</td><td>{l.qty}</td>
                   <td>{l.sale_type || saleTypeForChannel(l.channel) || '—'}{l.stock_affected === false ? ' (no stock)' : ''}</td>
                   <td>{l.channel}</td>
@@ -417,9 +462,22 @@ export default function Sales({ data, reload, brand }) {
                       {SETTLE_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                     </select>
                   </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
-                    <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                  <td>
+                    <select
+                      key={`re-${l.id}-${l.return_exchange}`}
+                      defaultValue={l.return_exchange || 'None'}
+                      onChange={(e) => changeReturnStatus(l, e.target.value)}
+                      className={`tag ${l.return_exchange === 'Returned' ? 'reorder' : l.return_exchange === 'Exchanged' ? 'progress' : 'ok'}`}
+                      style={{ border: '1px solid var(--line)' }}
+                    >
+                      {RETURN_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn secondary small" onClick={() => setEditId(l.id)}>Edit</button>
+                      <button className="btn danger small" onClick={() => handleUndo(l)}>Undo</button>
+                    </div>
                   </td>
                 </tr>
                 );
@@ -429,8 +487,8 @@ export default function Sales({ data, reload, brand }) {
           {sorted.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={3}>Total ({sorted.length} sale{sorted.length === 1 ? '' : 's'} shown)</td>
-                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td><td></td>
+                <td colSpan={3}>Total ({counted.length} sale{counted.length === 1 ? '' : 's'}{returnedRows.length ? `, ${returnedRows.length} returned/cancelled not counted` : ''})</td>
+                <td>{totalUnits}</td><td></td><td></td><td></td><td>{rupee(totalGross)}</td><td>{rupee(totalNet)}</td><td></td><td></td><td></td>
               </tr>
             </tfoot>
           )}
