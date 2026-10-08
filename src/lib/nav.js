@@ -26,6 +26,7 @@ export const NAV = [
   {
     type: 'group', id: 'people', label: 'Customers & Planning',
     items: [
+      { id: 'hometrials', label: 'Home Trials', roles: ['admin'] },
       { id: 'customers', label: 'Customer Details', roles: ['admin'] },
       { id: 'store', label: 'Store Planning', roles: ['admin', 'ca'] },
     ],
@@ -66,7 +67,7 @@ export const QUICK_ADD = [
 ];
 
 // Pages that can show both brands together. Every other page needs one brand picked.
-export const COMBINED_OK = ['home', 'expenses'];
+export const COMBINED_OK = ['home', 'expenses', 'hometrials'];
 
 // ---- Hash routing: #/sales, #/sales?add=1 ----
 export function readHash() {

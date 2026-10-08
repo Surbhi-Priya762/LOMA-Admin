@@ -74,3 +74,14 @@ npm run dev
 ## Notes on team access
 
 Right now, anyone with your Netlify URL can view and edit everything — same as the artifact link you were using before, just faster and permanent. If you want actual logins (so only your 3 team members can get in, or so you can see who's editing without the name-prompt), Supabase has a built-in Auth system that can be added later — just ask when you're ready for that.
+
+## Home Trials (Calendly)
+
+The **Home Trials** page (Customers & Planning → Home Trials, admin only) tracks every Lõma home trial: booking details from Calendly, then status, pieces sent, what was kept, payment and returns.
+
+One-time setup:
+1. **Supabase:** SQL Editor → New query → paste all of `supabase-home-trials.sql` → Run.
+2. **Calendly token:** log in to the Lõma Calendly account → Integrations & apps → API and webhooks → create a Personal access token.
+3. **Netlify:** Site settings → Environment variables → add `CALENDLY_TOKEN` with that token. Then Deploys → Trigger deploy.
+
+After that, new bookings sync by themselves every 30 minutes, when the page opens, or with **Sync from Calendly**. The sync only adds new bookings and marks Calendly cancellations; it never overwrites what the team has typed. WhatsApp or walk-in bookings can be added with **+ Add trial**.

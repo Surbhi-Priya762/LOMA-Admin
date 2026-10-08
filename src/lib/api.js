@@ -16,6 +16,8 @@ const TABLES = {
   settlements: { key: 'settlements', q: (t) => t.select('*').order('date_logged', { ascending: false }) },
   customer_details: { key: 'customerDetails', q: (t) => t.select('*').order('date', { ascending: false }) },
   quality_checks: { key: 'qualityChecks', q: (t) => t.select('*').order('date', { ascending: false }) },
+  // optional: if the home_trials table hasn't been created yet, the rest of the app still loads.
+  home_trials: { key: 'homeTrials', optional: true, q: (t) => t.select('*').order('trial_date', { ascending: false }) },
 };
 
 // Tables changed since the last reload. Every save/delete below goes through
@@ -25,6 +27,9 @@ const dirty = new Set();
 function write(table) {
   dirty.add(table);
   return supabase.from(table);
+}
+export function markDirty(table) {
+  dirty.add(table);
 }
 export function takeDirtyTables() {
   const list = Array.from(dirty);
@@ -37,8 +42,13 @@ export async function fetchTables(names = Object.keys(TABLES)) {
   const results = await Promise.all(names.map((n) => TABLES[n].q(supabase.from(n))));
   const out = {};
   results.forEach((r, i) => {
-    if (r.error) throw r.error;
     const cfg = TABLES[names[i]];
+    if (r.error && cfg.optional) {
+      out[cfg.key] = [];
+      out[cfg.key + 'Error'] = r.error.message;
+      return;
+    }
+    if (r.error) throw r.error;
     out[cfg.key] = r.data || (cfg.single ? cfg.fallback : []);
   });
   return out;
@@ -118,6 +128,7 @@ export async function backupAll() {
     settlements: d.settlements,
     customerDetails: d.customerDetails,
     qualityChecks: d.qualityChecks,
+    homeTrials: d.homeTrials,
   };
 }
 
@@ -211,4 +222,22 @@ export async function deleteQualityCheck(id) {
 export async function deleteQualityCheckByProductionLog(productionLogId) {
   const { error } = await write('quality_checks').delete().eq('production_log_id', productionLogId);
   if (error) throw error;
+}
+
+export async function saveHomeTrial(entry) {
+  const { error } = await write('home_trials').upsert({ ...entry, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+export async function deleteHomeTrial(id) {
+  const { error } = await write('home_trials').delete().eq('id', id);
+  if (error) throw error;
+}
+// Asks Netlify to pull new bookings from Calendly into home_trials. Returns counts only.
+export async function syncCalendly() {
+  const res = await fetch('/.netlify/functions/calendly-sync', { method: 'POST' });
+  let body = {};
+  try { body = await res.json(); } catch { /* not JSON, e.g. running locally */ }
+  if (!res.ok || !body.ok) throw new Error(body.error || 'Calendly sync is only available on the live Netlify site.');
+  markDirty('home_trials');
+  return body;
 }
