@@ -24,6 +24,7 @@ export default function Products({ data, reload, role, brand }) {
         { key: 'sku_prefix', label: 'SKU' },
         { key: 'type', label: 'Type' },
         { key: 'fabric_name', label: 'Fabric' },
+        ...(brand === 'Sauca' ? [{ key: (p) => p.pattern_cost ?? '', label: 'Pattern cost (Rs./piece)' }] : []),
         { key: (p) => { const mrp = productTargetMRP(p, settings.daily_labour_budget); return mrp != null ? mrp.toFixed(2) : ''; }, label: 'Target MRP' },
         { key: (p) => { const c = productProductionCost(p, settings.daily_labour_budget); return c != null ? c.toFixed(2) : ''; }, label: 'Production cost' },
         { key: (p) => productProductionCost(p, settings.daily_labour_budget) == null ? 'Incomplete' : 'Costed', label: 'Status' },

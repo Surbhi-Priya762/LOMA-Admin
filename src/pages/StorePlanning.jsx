@@ -14,6 +14,8 @@ export default function StorePlanning({ data, reload, brand }) {
   const [newFabricPrice, setNewFabricPrice] = useState('');
   const [extraName, setExtraName] = useState('');
   const [extraAmount, setExtraAmount] = useState('');
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
 
   const pps = Number(piecesPerSize) || 0;
   const fabrics = materials.filter((m) => m.category === 'Fabric');
@@ -92,8 +94,18 @@ export default function StorePlanning({ data, reload, brand }) {
   const grandTotal = fabricTotals.reduce((a, f) => a + f.costTotal, 0) + extrasTotal;
   const totalPiecesAll = products.reduce((a, p) => a + pps * ((p.sizes || []).length || 6), 0);
 
+  // Search only filters what's shown; the totals above still cover the whole plan.
+  const visibleFabricTotals = !q ? fabricTotals : fabricTotals
+    .map((f) => {
+      if ((f.fabric.name || '').toLowerCase().includes(q)) return f;
+      const breakdowns = f.breakdowns.filter((b) => (b.product.name || '').toLowerCase().includes(q) || (b.product.sku_prefix || '').toLowerCase().includes(q));
+      return breakdowns.length ? { ...f, breakdowns } : null;
+    })
+    .filter(Boolean);
+
   const assignedProductIds = new Set(products.filter((p) => p.fabric_name).map((p) => p.id));
-  const unassigned = products.filter((p) => !assignedProductIds.has(p.id));
+  const unassigned = products.filter((p) => !assignedProductIds.has(p.id))
+    .filter((p) => !q || (p.name || '').toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q));
 
   return (
     <div>
@@ -101,6 +113,9 @@ export default function StorePlanning({ data, reload, brand }) {
         <div>
           <h1 className="page-title">Store Planning</h1>
           <div className="page-sub">Fabric by fabric — every style that uses it, how much of everything it needs, and the total cost to stock the store</div>
+        </div>
+        <div className="toolbar">
+          <input className="search-input" placeholder="Search fabrics or styles…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
@@ -130,7 +145,11 @@ export default function StorePlanning({ data, reload, brand }) {
         </div>
       </div>
 
-      {fabricTotals.map(({ fabric, breakdowns, metersTotal, costTotal, hasIncomplete }) => (
+      {q && visibleFabricTotals.length === 0 && unassigned.length === 0 && (
+        <div className="empty" style={{ marginBottom: 18 }}>No fabrics or styles match your search.</div>
+      )}
+
+      {visibleFabricTotals.map(({ fabric, breakdowns, metersTotal, costTotal, hasIncomplete }) => (
         <div className="card" style={{ marginBottom: 18 }} key={fabric.id}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
             <div>

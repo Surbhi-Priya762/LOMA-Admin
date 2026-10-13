@@ -6,9 +6,12 @@ export default function RawMaterials({ data, reload, brand }) {
   const { products } = data;
   const [catFilter, setCatFilter] = useState('All');
   const [openId, setOpenId] = useState(undefined);
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
 
   const byBrand = data.materials.filter((m) => (m.brand || 'Loma') === brand);
-  const list = catFilter === 'All' ? byBrand : byBrand.filter((m) => m.category === catFilter);
+  const list = (catFilter === 'All' ? byBrand : byBrand.filter((m) => m.category === catFilter))
+    .filter((m) => !q || (m.name || '').toLowerCase().includes(q) || (m.category || '').toLowerCase().includes(q) || (m.unit || '').toLowerCase().includes(q));
   const openMaterial = openId === undefined || openId === null ? null : data.materials.find((m) => m.id === openId);
 
   function handleExport() {
@@ -37,6 +40,7 @@ export default function RawMaterials({ data, reload, brand }) {
           <div className="page-sub">{list.length} materials — fabric, button, thread, fusing, zip, hook, elastic &amp; lining, all in one place</div>
         </div>
         <div className="toolbar">
+          <input className="search-input" placeholder="Search materials…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <button className="btn secondary" onClick={handleExport}>⬇ Download as Excel</button>
           <button className="btn" onClick={() => setOpenId(null)}>+ Add raw material</button>
         </div>
@@ -50,7 +54,7 @@ export default function RawMaterials({ data, reload, brand }) {
       </div>
 
       {list.length === 0 ? (
-        <div className="empty">No materials in this category yet.</div>
+        <div className="empty">{q ? 'No materials match your search.' : 'No materials in this category yet.'}</div>
       ) : (
         <div className="fab-grid">
           {list.map((m) => {
