@@ -120,12 +120,18 @@ export function productLabourCost(p, dailyBudget) {
   return null;
 }
 
+// Pattern cost (Rs./piece) — Sauca products only. Loma products always return 0.
+export function productPatternCost(p) {
+  if ((p.brand || 'Loma') !== 'Sauca') return 0;
+  return p.pattern_cost != null && p.pattern_cost !== '' ? Number(p.pattern_cost) : 0;
+}
+
 export function productProductionCost(p, dailyBudget) {
   const sub = productMaterialSubtotal(p);
   const labour = productLabourCost(p, dailyBudget);
   if (sub == null || labour == null) return null;
   const electricity = p.electricity_cost != null && p.electricity_cost !== '' ? Number(p.electricity_cost) : 0;
-  return sub + labour + electricity;
+  return sub + labour + electricity + productPatternCost(p);
 }
 
 export function productFinalCost(p, dailyBudget) {

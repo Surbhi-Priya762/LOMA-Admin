@@ -1,41 +1,68 @@
 import { useState } from 'react';
-import { materialTotalIssued, fmt, rupee, todayStr, exportToExcel, filterByBrand } from '../lib/calc';
+import { CATS, materialTotalIssued, fmt, rupee, todayStr, exportToExcel, filterByBrand } from '../lib/calc';
 import { saveMaterial, saveProduct } from '../lib/api';
+
+const FINISHED = 'Finished goods';
+
+function materialMatches(m, q) {
+  return !q || (m.name || '').toLowerCase().includes(q) || (m.category || '').toLowerCase().includes(q);
+}
+
+function productMatches(p, q) {
+  return !q || (p.name || '').toLowerCase().includes(q) || (p.sku_prefix || '').toLowerCase().includes(q);
+}
 
 export default function Stock({ data, reload, brand }) {
   const materials = filterByBrand(data.materials, brand);
   const products = filterByBrand(data.products, brand);
   const productionLog = filterByBrand(data.productionLog, brand);
-  const [tab, setTab] = useState('materials');
+  const [tab, setTab] = useState('Fabric');
   const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+
+  const tabs = [...CATS, FINISHED];
+  const counts = {};
+  CATS.forEach((c) => {
+    counts[c] = materials.filter((m) => m.category === c && materialMatches(m, q)).length;
+  });
+  counts[FINISHED] = products.filter((p) => productMatches(p, q)).length;
 
   return (
     <div>
       <div className="topline">
         <div>
           <h1 className="page-title">Stock</h1>
-          <div className="page-sub">Raw material stock and finished-goods stock, all in one place</div>
+          <div className="page-sub">Fabric, button, thread, fusing, zip, hook, elastic, lining and finished goods — each on its own tab</div>
         </div>
         <div className="toolbar">
-          <input className="search-input" placeholder="Search by product or material name…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="search-input" placeholder="Search anything — name, category, SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
       <div className="tabs-row">
-        <div className={`pill ${tab === 'materials' ? 'active' : ''}`} onClick={() => setTab('materials')}>Raw materials</div>
-        <div className={`pill ${tab === 'finished' ? 'active' : ''}`} onClick={() => setTab('finished')}>Finished goods</div>
+        {tabs.map((t) => (
+          <div key={t} className={`pill ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+            {t} ({counts[t]})
+          </div>
+        ))}
       </div>
-      {tab === 'materials' ? (
-        <MaterialStockTable materials={materials} products={products} productionLog={productionLog} search={search} reload={reload} />
+      {tab === FINISHED ? (
+        <FinishedStockTable products={products} q={q} reload={reload} />
       ) : (
-        <FinishedStockTable products={products} search={search} reload={reload} />
+        <MaterialStockTable
+          category={tab}
+          materials={materials.filter((m) => m.category === tab)}
+          products={products}
+          productionLog={productionLog}
+          q={q}
+          reload={reload}
+        />
       )}
     </div>
   );
 }
 
-function MaterialStockTable({ materials, products, productionLog, search, reload }) {
-  const q = search.toLowerCase();
-  const list = materials.filter((m) => !q || m.name.toLowerCase().includes(q) || m.category.toLowerCase().includes(q));
+function MaterialStockTable({ category, materials, products, productionLog, q, reload }) {
+  const list = materials.filter((m) => materialMatches(m, q));
 
   function handleExport() {
     exportToExcel(
@@ -50,12 +77,12 @@ function MaterialStockTable({ materials, products, productionLog, search, reload
         { key: (m) => { const used = materialTotalIssued(m, products, productionLog); return m.stock != null ? fmt(Number(m.stock) - used) : ''; }, label: 'Current stock' },
         { key: 'block', label: 'Block' },
       ],
-      `loma-material-stock-${todayStr()}.csv`
+      `loma-${category.toLowerCase()}-stock-${todayStr()}.csv`
     );
   }
 
-  if (materials.length === 0) return <div className="empty">No materials yet — add them on the Raw Materials page.</div>;
-  if (list.length === 0) return <div className="empty">No materials match your search.</div>;
+  if (materials.length === 0) return <div className="empty">No {category.toLowerCase()} yet — add it on the Raw Materials page.</div>;
+  if (list.length === 0) return <div className="empty">No {category.toLowerCase()} matches your search.</div>;
 
   async function updateField(m, field, value) {
     await saveMaterial({ ...m, [field]: value === '' ? null : Number(value) });
@@ -108,11 +135,10 @@ function MaterialStockTable({ materials, products, productionLog, search, reload
   );
 }
 
-function FinishedStockTable({ products, search, reload }) {
-  const q = search.toLowerCase();
+function FinishedStockTable({ products, q, reload }) {
   const rows = [];
   products.forEach((p) => {
-    if (q && !p.name.toLowerCase().includes(q) && !(p.sku_prefix || '').toLowerCase().includes(q)) return;
+    if (!productMatches(p, q)) return;
     (p.sizes || []).forEach((s) => rows.push({ product: p, size: s.size, stock: s.stock }));
   });
 
@@ -129,6 +155,7 @@ function FinishedStockTable({ products, search, reload }) {
     );
   }
 
+  if (products.length === 0) return <div className="empty">No products yet — add them on the Products page.</div>;
   if (rows.length === 0) return <div className="empty">No products match your search.</div>;
 
   async function updateStock(product, size, value) {

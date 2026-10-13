@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   CATS, CAT_UNITS, SIZES, QTY_BASED_CATS, BRANDS,
   materialLineCost, productMaterialSubtotal, productProductionCost,
-  productFinalCost, productTargetMRP, productLabourCost, labourFormulaText,
+  productFinalCost, productTargetMRP, productLabourCost, labourFormulaText, productPatternCost,
   rupee, uid,
 } from '../lib/calc';
 import { saveProduct, deleteProduct, recordLastUpdate, updateSettings } from '../lib/api';
@@ -34,6 +34,7 @@ export default function ProductModal({ product, materials, dailyBudget, defaultB
   const finalCost = productFinalCost(draft, budgetForCalc);
   const mrp = productTargetMRP(draft, budgetForCalc);
   const labour = productLabourCost(draft, budgetForCalc);
+  const isSauca = (draft.brand || 'Loma') === 'Sauca';
 
   async function handleSave() {
     if (!draft.name.trim()) {
@@ -175,6 +176,12 @@ export default function ProductModal({ product, materials, dailyBudget, defaultB
                   <label>Electricity (Rs.)</label>
                   <input type="number" step="any" value={draft.electricity_cost ?? ''} onChange={(e) => set('electricity_cost', e.target.value === '' ? null : Number(e.target.value))} placeholder="e.g. 25" />
                 </div>
+                {isSauca && (
+                  <div className="field">
+                    <label>Pattern cost (Rs./piece)</label>
+                    <input type="number" step="any" value={draft.pattern_cost ?? ''} onChange={(e) => set('pattern_cost', e.target.value === '' ? null : Number(e.target.value))} placeholder="e.g. 50" />
+                  </div>
+                )}
                 <div className="field">
                   <label>Packaging (Rs.)</label>
                   <input type="number" step="any" value={draft.packaging ?? ''} onChange={(e) => set('packaging', e.target.value === '' ? null : Number(e.target.value))} />
@@ -201,6 +208,9 @@ export default function ProductModal({ product, materials, dailyBudget, defaultB
                 <div className="calc-row total"><span>Material subtotal</span><span>{matSub != null ? rupee(matSub) : '—'}</span></div>
                 <div className="calc-row"><span>Labour</span><span>{labour != null ? rupee(labour) : '—'}</span></div>
                 <div className="calc-row"><span>Electricity</span><span>{draft.electricity_cost != null && draft.electricity_cost !== '' ? rupee(draft.electricity_cost) : '—'}</span></div>
+                {isSauca && (
+                  <div className="calc-row"><span>Pattern cost</span><span>{draft.pattern_cost != null && draft.pattern_cost !== '' ? rupee(productPatternCost(draft)) : '—'}</span></div>
+                )}
                 <div className="calc-row total"><span>Production cost</span><span>{prodCost != null ? rupee(prodCost) : '—'}</span></div>
                 <div className="calc-row"><span>Packaging</span><span>{draft.packaging != null && draft.packaging !== '' ? rupee(draft.packaging) : '—'}</span></div>
                 <div className="calc-row"><span>Final cost (incl. packaging)</span><span>{finalCost != null ? rupee(finalCost) : '—'}</span></div>

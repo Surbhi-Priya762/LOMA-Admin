@@ -19,6 +19,7 @@ create table if not exists products (
   lining_name text, lining_qty numeric, lining_price numeric,
   labour_cost numeric, tailor_output numeric, hours_per_piece numeric,
   packaging numeric, electricity_cost numeric, selling_price numeric,
+  pattern_cost numeric, -- Sauca only: pattern cost per piece
   sizes jsonb not null default '[]',
   updated_at timestamptz default now()
 );
