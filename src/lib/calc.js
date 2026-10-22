@@ -227,6 +227,23 @@ export function matchProductBySku(skuCode, products) {
   return product ? { product, size: lastPart } : null;
 }
 
+// Barcode scan: "LOM-BBT-W-BLK-M" -> { product, size }. Case-insensitive, ignores
+// spaces. Returns { error } with a reason when it can't be matched.
+export function matchScannedSku(code, products) {
+  const clean = String(code || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!clean) return { error: 'Empty scan.' };
+  const parts = clean.split('-');
+  const size = parts[parts.length - 1];
+  const prefix = parts.slice(0, -1).join('-');
+  const byPrefix = (pre) => products.find((p) => p.sku_prefix && p.sku_prefix.trim().toUpperCase() === pre);
+  if (SIZES.includes(size) && prefix) {
+    const product = byPrefix(prefix);
+    if (product) return { product, size };
+  }
+  if (byPrefix(clean)) return { error: `"${clean}" has no size on the end (e.g. ${clean}-M).` };
+  return { error: `No product has SKU "${clean}".` };
+}
+
 export function matchProductBySkuPrefix(strippedSku, products) {
   if (!strippedSku) return null;
   const sorted = [...products].filter((p) => p.sku_prefix).sort((a, b) => b.sku_prefix.length - a.sku_prefix.length);
