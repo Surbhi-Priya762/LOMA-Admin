@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   CATS, CAT_UNITS, SIZES, QTY_BASED_CATS, BRANDS,
   materialLineCost, productMaterialSubtotal, productProductionCost,
-  productFinalCost, productTargetMRP, productLabourCost, labourFormulaText, productPatternCost,
+  productFinalCost, productTargetMRP, productLabourCost, labourFormulaText, productPatternCost, productMasterCost,
   rupee, uid,
 } from '../lib/calc';
 import { saveProduct, deleteProduct, recordLastUpdate, updateSettings } from '../lib/api';
@@ -176,6 +176,10 @@ export default function ProductModal({ product, materials, dailyBudget, defaultB
                   <label>Electricity (Rs.)</label>
                   <input type="number" step="any" value={draft.electricity_cost ?? ''} onChange={(e) => set('electricity_cost', e.target.value === '' ? null : Number(e.target.value))} placeholder="e.g. 25" />
                 </div>
+                <div className="field">
+                  <label>Master cost (Rs./piece)</label>
+                  <input type="number" step="any" value={draft.master_cost ?? ''} onChange={(e) => set('master_cost', e.target.value === '' ? null : Number(e.target.value))} placeholder="e.g. 200" />
+                </div>
                 {isSauca && (
                   <div className="field">
                     <label>Pattern cost (Rs./piece)</label>
@@ -208,6 +212,7 @@ export default function ProductModal({ product, materials, dailyBudget, defaultB
                 <div className="calc-row total"><span>Material subtotal</span><span>{matSub != null ? rupee(matSub) : '—'}</span></div>
                 <div className="calc-row"><span>Labour</span><span>{labour != null ? rupee(labour) : '—'}</span></div>
                 <div className="calc-row"><span>Electricity</span><span>{draft.electricity_cost != null && draft.electricity_cost !== '' ? rupee(draft.electricity_cost) : '—'}</span></div>
+                <div className="calc-row"><span>Master cost</span><span>{draft.master_cost != null && draft.master_cost !== '' ? rupee(productMasterCost(draft)) : '—'}</span></div>
                 {isSauca && (
                   <div className="calc-row"><span>Pattern cost</span><span>{draft.pattern_cost != null && draft.pattern_cost !== '' ? rupee(productPatternCost(draft)) : '—'}</span></div>
                 )}

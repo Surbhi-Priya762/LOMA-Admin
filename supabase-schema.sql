@@ -20,6 +20,7 @@ create table if not exists products (
   labour_cost numeric, tailor_output numeric, hours_per_piece numeric,
   packaging numeric, electricity_cost numeric, selling_price numeric,
   pattern_cost numeric, -- Sauca only: pattern cost per piece
+  master_cost numeric, -- every product: master cost per piece
   sizes jsonb not null default '[]',
   updated_at timestamptz default now()
 );
