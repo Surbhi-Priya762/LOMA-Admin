@@ -23,6 +23,7 @@ import StorePlanning from './pages/StorePlanning';
 import StockCheck from './pages/StockCheck';
 import CustomerDetails from './pages/CustomerDetails';
 import HomeTrials from './pages/HomeTrials';
+import DailyProduction from './pages/DailyProduction';
 
 // roles: 'admin' sees everything. 'viewer' sees only Home + Products, no editing, no pricing.
 // 'ca' sees everything except Customer Details, Settlements, and the real Sales page —
@@ -252,6 +253,7 @@ function Shell({ role, onLogout }) {
             {!isViewer && route === 'materials' && <RawMaterials {...p} />}
             {!isViewer && route === 'stock' && <Stock {...p} />}
             {!isViewer && route === 'production' && <ProductionLog {...p} />}
+            {!isViewer && route === 'dailyproduction' && <DailyProduction {...p} />}
             {!isViewer && route === 'qualitycheck' && <QualityCheck {...p} />}
             {!isViewer && route === 'inward' && <Inward {...p} />}
             {!isViewer && route === 'outward' && <Outward {...p} />}

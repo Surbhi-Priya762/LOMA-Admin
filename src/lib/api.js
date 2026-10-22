@@ -17,6 +17,8 @@ const TABLES = {
   customer_details: { key: 'customerDetails', q: (t) => t.select('*').order('date', { ascending: false }) },
   quality_checks: { key: 'qualityChecks', q: (t) => t.select('*').order('date', { ascending: false }) },
   // optional: if the home_trials table hasn't been created yet, the rest of the app still loads.
+  // optional too: Daily Production only appears once supabase-daily-production.sql has been run.
+  daily_production: { key: 'dailyProduction', optional: true, q: (t) => t.select('*').order('date', { ascending: false }).order('created_at', { ascending: false }) },
   home_trials: { key: 'homeTrials', optional: true, q: (t) => t.select('*').order('trial_date', { ascending: false }) },
 };
 
@@ -129,6 +131,7 @@ export async function backupAll() {
     customerDetails: d.customerDetails,
     qualityChecks: d.qualityChecks,
     homeTrials: d.homeTrials,
+    dailyProduction: d.dailyProduction,
   };
 }
 
@@ -234,6 +237,15 @@ export async function deleteQualityCheck(id) {
 }
 export async function deleteQualityCheckByProductionLog(productionLogId) {
   const { error } = await write('quality_checks').delete().eq('production_log_id', productionLogId);
+  if (error) throw error;
+}
+
+export async function saveDailyProduction(entry) {
+  const { error } = await write('daily_production').upsert(entry);
+  if (error) throw error;
+}
+export async function deleteDailyProduction(id) {
+  const { error } = await write('daily_production').delete().eq('id', id);
   if (error) throw error;
 }
 
