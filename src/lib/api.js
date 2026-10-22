@@ -149,6 +149,19 @@ export async function addInward(entry) {
   const { error } = await write('inward').insert(entry);
   if (error) throw error;
 }
+export async function saveInward(entry) {
+  const { error } = await write('inward').upsert(entry);
+  if (error) throw error;
+}
+// Adds `delta` pieces to one size of a product, reading the latest stock from the
+// database first so rapid back-to-back barcode scans never overwrite each other.
+export async function adjustSizeStock(productId, size, delta) {
+  const { data: row, error: readErr } = await supabase.from('products').select('sizes').eq('id', productId).single();
+  if (readErr) throw readErr;
+  const sizes = (row.sizes || []).map((s) => (s.size === size ? { ...s, stock: Math.max(0, (Number(s.stock) || 0) + delta) } : s));
+  const { error } = await write('products').update({ sizes }).eq('id', productId);
+  if (error) throw error;
+}
 export async function deleteInward(id) {
   const { error } = await write('inward').delete().eq('id', id);
   if (error) throw error;
