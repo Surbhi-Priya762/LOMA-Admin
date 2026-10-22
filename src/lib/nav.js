@@ -11,6 +11,7 @@ export const NAV = [
       { id: 'products', label: 'Products', roles: ['admin', 'viewer', 'ca'] },
       { id: 'materials', label: 'Raw Materials', roles: ['admin', 'ca'] },
       { id: 'production', label: 'Production Log', roles: ['admin', 'ca'] },
+      { id: 'dailyproduction', label: 'Daily Production', roles: ['admin', 'ca'] },
       { id: 'qualitycheck', label: 'Quality Check', roles: ['admin', 'ca'] },
     ],
   },
