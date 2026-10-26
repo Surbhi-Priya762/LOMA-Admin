@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { todayStr, uid, exportToExcel, filterByBrand } from '../lib/calc';
 import { savePackaging, deletePackaging } from '../lib/api';
 import { useUI } from '../context/UIContext';
+import { packagingReady } from '../lib/packaging';
+import { BRANDS } from '../lib/calc';
 
 // Packaging Materials: what's in hand, when it was last counted, and which
 // vendor to call when it runs out. Separate from raw materials and stock.
@@ -36,12 +38,13 @@ function waNumber(phone) {
   return digits;
 }
 
-const blank = { name: '', qty: '', unit: '', reorder_level: '', last_checked: '', vendor_name: '', vendor_phone: '', notes: '' };
+const blank = { name: '', qty: '', unit: '', reorder_level: '', last_checked: '', vendor_name: '', vendor_phone: '', notes: '', used_for: '', per_order: '' };
 
 export default function Packaging({ data, reload, brand }) {
   const { toast, confirm } = useUI();
   const items = filterByBrand(data.packaging, brand);
   const tableMissing = Boolean(data.packagingError);
+  const perOrderReady = packagingReady(data);
 
   const [draft, setDraft] = useState({ ...blank, last_checked: todayStr() });
   const [editId, setEditId] = useState(null);
@@ -71,6 +74,7 @@ export default function Packaging({ data, reload, brand }) {
       vendor_name: draft.vendor_name.trim() || null,
       vendor_phone: draft.vendor_phone.trim() || null,
       notes: draft.notes.trim() || null,
+      ...(perOrderReady ? { used_for: draft.used_for || null, per_order: draft.used_for ? (num(draft.per_order) ?? 1) : null } : {}),
     };
     setSaving(true);
     try {
@@ -90,6 +94,7 @@ export default function Packaging({ data, reload, brand }) {
     setDraft({
       name: i.name || '', qty: i.qty ?? '', unit: i.unit || '', reorder_level: i.reorder_level ?? '',
       last_checked: i.last_checked || '', vendor_name: i.vendor_name || '', vendor_phone: i.vendor_phone || '', notes: i.notes || '',
+      used_for: i.used_for || '', per_order: i.per_order ?? '',
     });
     document.getElementById('add-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -141,6 +146,8 @@ export default function Packaging({ data, reload, brand }) {
         { key: 'last_checked', label: 'Last checked' },
         { key: 'vendor_name', label: 'Vendor' },
         { key: 'vendor_phone', label: 'Vendor contact' },
+        { key: 'used_for', label: 'Used per order (brand)' },
+        { key: 'per_order', label: 'Per order' },
         { key: 'notes', label: 'Notes' },
       ],
       `${brand.toLowerCase()}-packaging-materials-${todayStr()}.csv`
@@ -195,6 +202,20 @@ export default function Packaging({ data, reload, brand }) {
           <div className="field"><label>Vendor contact number</label><input type="tel" value={draft.vendor_phone} onChange={(e) => set('vendor_phone', e.target.value)} placeholder="e.g. 98450 12345" /></div>
           <div className="field"><label>Reorder at (optional)</label><input type="number" step="any" value={draft.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} placeholder="Shows Low at/below this" /></div>
         </div>
+        {perOrderReady && (
+          <div className="field-row">
+            <div className="field">
+              <label>Used when packing an order</label>
+              <select value={draft.used_for} onChange={(e) => set('used_for', e.target.value)}>
+                <option value="">Not used per order</option>
+                {BRANDS.map((b) => <option key={b} value={b}>Every {b} order</option>)}
+              </select>
+            </div>
+            {draft.used_for && (
+              <div className="field"><label>How many per order</label><input type="number" step="any" min="0" value={draft.per_order} onChange={(e) => set('per_order', e.target.value)} placeholder="1" /></div>
+            )}
+          </div>
+        )}
         <div className="field"><label>Notes (optional)</label><input value={draft.notes} onChange={(e) => set('notes', e.target.value)} placeholder="e.g. Size 12×16, min order 500" /></div>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <button className="btn" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : editId ? 'Save changes' : '+ Add'}</button>
@@ -218,6 +239,7 @@ export default function Packaging({ data, reload, brand }) {
                   <tr key={i.id}>
                     <td>
                       {i.name}
+                      {i.used_for && <div className="mini-note" style={{ color: 'var(--brass)' }}>📦 {Number(i.per_order ?? 1)} per {i.used_for} order</div>}
                       {i.notes && <div className="mini-note">{i.notes}</div>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -259,7 +281,7 @@ export default function Packaging({ data, reload, brand }) {
         </div>
       )}
       <div className="mini-note" style={{ marginTop: 8 }}>
-        Changing a quantity in the table saves it and marks the item as checked today. Tap a number to call, or WhatsApp to message the vendor.
+        Changing a quantity in the table saves it and marks the item as checked today. Items marked 📦 go down automatically when a sale or outward is logged with "Packed" ticked. Tap a number to call, or WhatsApp to message the vendor.
       </div>
     </div>
   );

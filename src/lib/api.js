@@ -256,6 +256,22 @@ export async function savePackaging(item) {
   const { error } = await write('packaging_materials').upsert({ ...item, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
+// Packing an order: take each packaging item marked "use for <brand> orders"
+// down by its per-order amount (direction -1), or put it back on Undo (+1).
+// Reads the latest quantities first so it never works from stale numbers.
+export async function applyOrderPackaging(brand, direction = -1) {
+  const { data: rows, error } = await supabase.from('packaging_materials').select('id, name, qty, per_order').eq('used_for', brand);
+  if (error) throw error;
+  for (const r of rows || []) {
+    const per = r.per_order != null && r.per_order !== '' ? Number(r.per_order) : 1;
+    if (!per) continue;
+    const qty = (Number(r.qty) || 0) + direction * per;
+    const { error: upErr } = await write('packaging_materials').update({ qty, updated_at: new Date().toISOString() }).eq('id', r.id);
+    if (upErr) throw upErr;
+  }
+  markDirty('packaging_materials');
+  return (rows || []).length;
+}
 export async function deletePackaging(id) {
   const { error } = await write('packaging_materials').delete().eq('id', id);
   if (error) throw error;

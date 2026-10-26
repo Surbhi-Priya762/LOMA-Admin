@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, exportToExcel, sizeStock, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
 import DateFilter from '../components/DateFilter';
-import { addSale, updateSale, deleteSale, saveProduct, addSettlement, deleteSettlementBySale } from '../lib/api';
+import { addSale, updateSale, deleteSale, saveProduct, addSettlement, deleteSettlementBySale, applyOrderPackaging } from '../lib/api';
+import PackedToggle from '../components/PackedToggle';
+import { packagingReady, orderPackagingItems } from '../lib/packaging';
 import { useUI } from '../context/UIContext';
 import BrandGate from '../components/BrandGate';
 
@@ -21,6 +23,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
   const [gross, setGross] = useState('');
   const [net, setNet] = useState('');
   const [date, setDate] = useState(todayStr());
+  const [packed, setPacked] = useState(true);
 
   if (brand === 'Combined') return <BrandGate brand={brand} setBrand={setBrand} pageName="Sales" />;
 
@@ -52,6 +55,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
 
   function selectSaleType(type) {
     setSaleType(type);
+    setPacked(type === 'Online');
     setChannel(CHANNELS_BY_TYPE[type][0]);
   }
 
@@ -82,7 +86,10 @@ export default function CASales({ data, reload, brand, setBrand }) {
       price: gross === '' ? null : Number(gross) / q,
       return_exchange: 'None',
     };
+    const usePackaging = packed && packagingReady(data) && orderPackagingItems(data, brand).length > 0;
+    if (packagingReady(data)) entry.packaging_used = usePackaging;
     await addSale(entry);
+    if (usePackaging) await applyOrderPackaging(brand, -1);
     if (stockAffected) {
       const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
       delete updated.updated_at;
@@ -102,7 +109,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
       settlement_date: isInstant ? date : null, notes: '',
     });
 
-    toast('Sale logged.');
+    toast(`Sale logged.${usePackaging ? ' Packaging taken off.' : ''}`);
     setGross(''); setNet('');
     reload();
   }
@@ -119,9 +126,10 @@ export default function CASales({ data, reload, brand, setBrand }) {
       delete updated.updated_at;
       await saveProduct(updated);
     }
+    if (entry.packaging_used) await applyOrderPackaging(entry.brand || brand, 1);
     await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
-    toast('Sale undone, stock restored.');
+    toast(`Sale undone, stock restored.${entry.packaging_used ? ' Packaging put back.' : ''}`);
     reload();
   }
 
@@ -217,6 +225,7 @@ export default function CASales({ data, reload, brand, setBrand }) {
           <div className="field"><label>Gross sale (Rs.)</label><input type="number" step="any" value={gross} onChange={(e) => setGross(e.target.value)} /></div>
           <div className="field"><label>Net sale (Rs.)</label><input type="number" step="any" value={net} onChange={(e) => setNet(e.target.value)} placeholder="defaults to Gross if left blank" /></div>
         </div>
+        <PackedToggle data={data} brand={brand} checked={packed} onChange={setPacked} />
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
