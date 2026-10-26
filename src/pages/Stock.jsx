@@ -72,9 +72,9 @@ function MaterialStockTable({ category, materials, products, productionLog, q, r
         { key: 'category', label: 'Category' },
         { key: 'unit', label: 'Unit' },
         { key: 'price', label: 'Price/unit' },
-        { key: 'stock', label: 'In house' },
-        { key: (m) => fmt(materialTotalIssued(m, products, productionLog)) || 0, label: 'Used (Ready production)' },
-        { key: (m) => { const used = materialTotalIssued(m, products, productionLog); return m.stock != null ? fmt(Number(m.stock) - used) : ''; }, label: 'Current stock' },
+        { key: 'stock', label: 'Total received' },
+        { key: (m) => fmt(materialTotalIssued(m, products, productionLog)) || 0, label: 'Used in production' },
+        { key: (m) => { const used = materialTotalIssued(m, products, productionLog); return m.stock != null ? fmt(Number(m.stock) - used) : ''; }, label: 'Left now' },
         { key: 'block', label: 'Block' },
       ],
       `loma-${category.toLowerCase()}-stock-${todayStr()}.csv`
@@ -85,7 +85,20 @@ function MaterialStockTable({ category, materials, products, productionLog, q, r
   if (list.length === 0) return <div className="empty">No {category.toLowerCase()} matches your search.</div>;
 
   async function updateField(m, field, value) {
-    await saveMaterial({ ...m, [field]: value === '' ? null : Number(value) });
+    const v = value === '' ? null : Number(value);
+    if (v === (m[field] == null ? null : Number(m[field]))) return;
+    await saveMaterial({ ...m, [field]: v });
+    reload();
+  }
+
+  // Typing what's left on the shelf: Total received becomes left + already used,
+  // so Left now shows exactly the number typed.
+  async function updateLeft(m, value, used) {
+    if (value === '') return;
+    const left = Number(value);
+    const current = m.stock != null ? Number(m.stock) - used : null;
+    if (current != null && Math.abs(left - current) < 1e-9) return;
+    await saveMaterial({ ...m, stock: Math.round((left + used) * 1000) / 1000 });
     reload();
   }
 
@@ -98,8 +111,8 @@ function MaterialStockTable({ category, materials, products, productionLog, q, r
         <table className="data-table">
           <thead>
             <tr>
-              <th>Material</th><th>Category</th><th>Unit</th><th>Price/unit</th><th>In house</th>
-              <th>Used (Ready production)</th><th>Current stock</th><th>Status</th><th>Block (booked, not received)</th>
+              <th>Material</th><th>Category</th><th>Unit</th><th>Price/unit</th><th>Total received</th>
+              <th>Used in production</th><th>Left now</th><th>Status</th><th>Block (booked, not received)</th>
             </tr>
           </thead>
           <tbody>
@@ -114,11 +127,15 @@ function MaterialStockTable({ category, materials, products, productionLog, q, r
                   <td>{m.unit}</td>
                   <td>{m.price != null ? rupee(m.price) : '—'}</td>
                   <td>
-                    <input type="number" step="any" defaultValue={m.stock ?? ''} style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
+                    <input type="number" step="any" key={`rec-${m.id}-${m.stock}`} defaultValue={m.stock ?? ''} style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
                       onBlur={(e) => updateField(m, 'stock', e.target.value)} />
                   </td>
                   <td>{fmt(used) || 0}</td>
-                  <td>{current != null ? fmt(current) : '—'}</td>
+                  <td>
+                    <input type="number" step="any" key={`left-${m.id}-${m.stock}-${used}`} defaultValue={current != null ? fmt(current) : ''} placeholder="—"
+                      style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2, fontWeight: 600 }}
+                      onBlur={(e) => updateLeft(m, e.target.value, used)} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+                  </td>
                   <td>{low ? <span className="tag reorder">Reorder</span> : current != null ? <span className="tag ok">OK</span> : '—'}</td>
                   <td>
                     <input type="number" step="any" defaultValue={m.block ?? ''} style={{ width: 90, padding: '4px 6px', border: '1px solid var(--line)', borderRadius: 2 }}
@@ -130,7 +147,11 @@ function MaterialStockTable({ category, materials, products, productionLog, q, r
           </tbody>
         </table>
       </div>
-      <div className="mini-note" style={{ marginTop: 8 }}>Block is informational only — it doesn't feed into Current stock or any other calculation.</div>
+      <div className="mini-note" style={{ marginTop: 8 }}>
+        <b>Total received</b> = all {category.toLowerCase()} ordered and received so far · <b>Used in production</b> = taken automatically from Production Log entries marked Ready · <b>Left now</b> = Total received − Used.
+        After counting the shelf, type the count in <b>Left now</b> — Total received adjusts by itself. When a new lot arrives, add it to Total received.
+        Block is informational only — it doesn't feed into any calculation.
+      </div>
     </>
   );
 }
