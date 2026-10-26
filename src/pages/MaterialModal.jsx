@@ -127,7 +127,7 @@ export default function MaterialModal({ material, products, defaultCategory, def
           </div>
           <div className="field-row">
             <div className="field">
-              <label>In house (warehouse)</label>
+              <label>Total received ({draft.unit || 'units'}) — everything ordered &amp; received so far</label>
               <input type="number" step="any" value={draft.stock ?? ''} onChange={(e) => set('stock', e.target.value === '' ? null : Number(e.target.value))} />
             </div>
             <div className="field">

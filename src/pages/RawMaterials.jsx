@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CATS, materialUsedByProducts, todayStr, exportToExcel } from '../lib/calc';
+import { CATS, materialUsedByProducts, materialTotalIssued, filterByBrand, fmt, todayStr, exportToExcel } from '../lib/calc';
 import MaterialModal from './MaterialModal';
 
 export default function RawMaterials({ data, reload, brand }) {
@@ -10,6 +10,9 @@ export default function RawMaterials({ data, reload, brand }) {
   const q = search.trim().toLowerCase();
 
   const byBrand = data.materials.filter((m) => (m.brand || 'Loma') === brand);
+  const brandProducts = filterByBrand(products, brand);
+  const brandLog = filterByBrand(data.productionLog, brand);
+  const leftNow = (m) => (m.stock == null ? null : Number(m.stock) - materialTotalIssued(m, brandProducts, brandLog));
   const list = (catFilter === 'All' ? byBrand : byBrand.filter((m) => m.category === catFilter))
     .filter((m) => !q || (m.name || '').toLowerCase().includes(q) || (m.category || '').toLowerCase().includes(q) || (m.unit || '').toLowerCase().includes(q));
   const openMaterial = openId === undefined || openId === null ? null : data.materials.find((m) => m.id === openId);
@@ -23,7 +26,8 @@ export default function RawMaterials({ data, reload, brand }) {
         { key: 'category', label: 'Category' },
         { key: 'unit', label: 'Unit' },
         { key: 'price', label: 'Price/unit' },
-        { key: 'stock', label: 'In house' },
+        { key: 'stock', label: 'Total received' },
+        { key: (m) => { const l = leftNow(m); return l == null ? '' : fmt(l); }, label: 'Left now' },
         { key: 'block', label: 'Block' },
         { key: 'reorder_level', label: 'Reorder level' },
         { key: (m) => materialUsedByProducts(m, products).length, label: 'Used in (products)' },
@@ -65,8 +69,8 @@ export default function RawMaterials({ data, reload, brand }) {
                 <div className="fab-body">
                   <div className="fab-name">{m.name}</div>
                   <div className="tag" style={{ marginBottom: 6 }}>{m.category}</div>
-                  <div className="fab-meta"><span>{m.price != null ? `Rs.${m.price}/${m.unit}` : 'no price'}</span><span>In house: {m.stock ?? '—'}</span></div>
-                  <div className="fab-meta"><span>Block: {m.block ?? '—'}</span><span /></div>
+                  <div className="fab-meta"><span>{m.price != null ? `Rs.${m.price}/${m.unit}` : 'no price'}</span><span>Left now: {leftNow(m) != null ? fmt(leftNow(m)) : '—'}</span></div>
+                  <div className="fab-meta"><span>Received: {m.stock ?? '—'}</span><span>Block: {m.block ?? '—'}</span></div>
                   <div className="fab-used">Used in {usedCount} product{usedCount === 1 ? '' : 's'}</div>
                 </div>
               </div>
