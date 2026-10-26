@@ -19,6 +19,8 @@ const TABLES = {
   // optional: if the home_trials table hasn't been created yet, the rest of the app still loads.
   // optional too: Daily Production only appears once supabase-daily-production.sql has been run.
   daily_production: { key: 'dailyProduction', optional: true, q: (t) => t.select('*').order('date', { ascending: false }).order('created_at', { ascending: false }) },
+  // optional: Packaging Materials only appears once supabase-packaging-materials.sql has been run.
+  packaging_materials: { key: 'packaging', optional: true, q: (t) => t.select('*').order('name') },
   home_trials: { key: 'homeTrials', optional: true, q: (t) => t.select('*').order('trial_date', { ascending: false }) },
 };
 
@@ -132,6 +134,7 @@ export async function backupAll() {
     qualityChecks: d.qualityChecks,
     homeTrials: d.homeTrials,
     dailyProduction: d.dailyProduction,
+    packaging: d.packaging,
   };
 }
 
@@ -246,6 +249,15 @@ export async function saveDailyProduction(entry) {
 }
 export async function deleteDailyProduction(id) {
   const { error } = await write('daily_production').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function savePackaging(item) {
+  const { error } = await write('packaging_materials').upsert({ ...item, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+export async function deletePackaging(id) {
+  const { error } = await write('packaging_materials').delete().eq('id', id);
   if (error) throw error;
 }
 

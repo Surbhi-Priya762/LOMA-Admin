@@ -22,6 +22,7 @@ export const NAV = [
       { id: 'inward', label: 'Inward / Returns', roles: ['admin', 'ca'] },
       { id: 'outward', label: 'Outward', roles: ['admin', 'ca'] },
       { id: 'stockcheck', label: 'Stock Check', roles: ['admin', 'ca'] },
+      { id: 'packaging', label: 'Packaging Materials', roles: ['admin', 'ca'] },
     ],
   },
   {
