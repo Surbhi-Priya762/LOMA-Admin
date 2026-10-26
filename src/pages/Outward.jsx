@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { SIZES, todayStr, uid, exportToExcel, filterByBrand, sizeStock } from '../lib/calc';
-import { addOutward, deleteOutward, saveProduct } from '../lib/api';
+import { addOutward, deleteOutward, saveProduct, applyOrderPackaging } from '../lib/api';
+import PackedToggle from '../components/PackedToggle';
+import { packagingReady, orderPackagingItems } from '../lib/packaging';
 import { useUI } from '../context/UIContext';
 
 export default function Outward({ data, reload, brand }) {
@@ -14,6 +16,7 @@ export default function Outward({ data, reload, brand }) {
   const [personName, setPersonName] = useState('');
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
+  const [packed, setPacked] = useState(true);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const sizeOptions = selectedProduct ? (selectedProduct.sizes || []).map((s) => s.size) : SIZES;
@@ -58,13 +61,16 @@ export default function Outward({ data, reload, brand }) {
       size, qty: qn, person_name: personName.trim(), notes: notes.trim(),
       brand,
     };
+    const usePackaging = packed && packagingReady(data) && orderPackagingItems(data, brand).length > 0;
+    if (packagingReady(data)) entry.packaging_used = usePackaging;
     await addOutward(entry);
+    if (usePackaging) await applyOrderPackaging(brand, -1);
 
     const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - qn } : s)) };
     delete updated.updated_at;
     await saveProduct(updated);
 
-    toast(`Logged ${qn} × ${selectedProduct.name} (${size}) to ${personName.trim()}.`);
+    toast(`Logged ${qn} × ${selectedProduct.name} (${size}) to ${personName.trim()}.${usePackaging ? ' Packaging taken off.' : ''}`);
     setPersonName(''); setNotes('');
     reload();
   }
@@ -81,8 +87,9 @@ export default function Outward({ data, reload, brand }) {
       delete updated.updated_at;
       await saveProduct(updated);
     }
+    if (entry.packaging_used) await applyOrderPackaging(entry.brand || brand, 1);
     await deleteOutward(entry.id);
-    toast('Entry undone, stock restored.');
+    toast(`Entry undone, stock restored.${entry.packaging_used ? ' Packaging put back.' : ''}`);
     reload();
   }
 
@@ -126,7 +133,8 @@ export default function Outward({ data, reload, brand }) {
           <div className="field"><label>Name of the person</label><input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="e.g. influencer or team member's name" /></div>
           <div className="field"><label>Notes — what this is for</label><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Instagram collab, gifting, sample" /></div>
         </div>
-        <button className="btn" onClick={handleSubmit}>Log outward</button>
+        <PackedToggle data={data} brand={brand} checked={packed} onChange={setPacked} />
+        <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log outward</button>
       </div>
 
       <input className="search-input" placeholder="Search by product or person…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 12, width: '100%', maxWidth: 340 }} />

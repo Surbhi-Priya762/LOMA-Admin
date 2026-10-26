@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { SIZES, CHANNELS, CHANNELS_BY_TYPE, SALE_TYPES, saleTypeForChannel, todayStr, rupee, fmt, uid, saleGross, saleNet, applyCommission, exportToExcel, filterByBrand, sizeStock, inDateRange, rangeForPreset, rangeLabel } from '../lib/calc';
 import DateFilter from '../components/DateFilter';
-import { addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
+import { applyOrderPackaging, addSale, updateSale, deleteSale, saveProduct, saveChannelCommission, addSettlement, deleteSettlementBySale, updateSettlement } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import SalesEditModal from './SalesEditModal';
+import PackedToggle from '../components/PackedToggle';
+import { packagingReady, orderPackagingItems } from '../lib/packaging';
 
 export default function Sales({ data, reload, brand }) {
   const { toast, confirm } = useUI();
@@ -38,6 +40,7 @@ export default function Sales({ data, reload, brand }) {
   const [commType, setCommType] = useState('None');
   const [commValue, setCommValue] = useState('');
   const [date, setDate] = useState(todayStr());
+  const [packed, setPacked] = useState(true);
 
   const channelDefault = (ch) => (commissions || []).find((c) => c.channel === ch) || { channel: ch, type: 'None', value: null };
 
@@ -80,6 +83,7 @@ export default function Sales({ data, reload, brand }) {
 
   function selectSaleType(type) {
     setSaleType(type);
+    setPacked(type === 'Online');
     selectChannel(CHANNELS_BY_TYPE[type][0]);
   }
 
@@ -117,7 +121,10 @@ export default function Sales({ data, reload, brand }) {
       stock_affected: stockAffected,
       brand,
     };
+    const usePackaging = packed && packagingReady(data) && orderPackagingItems(data, brand).length > 0;
+    if (packagingReady(data)) entry.packaging_used = usePackaging;
     await addSale(entry);
+    if (usePackaging) await applyOrderPackaging(brand, -1);
 
     if (stockAffected) {
       const updated = { ...selectedProduct, sizes: selectedProduct.sizes.map((s) => (s.size === size ? { ...s, stock: (Number(s.stock) || 0) - q } : s)) };
@@ -138,7 +145,7 @@ export default function Sales({ data, reload, brand }) {
       brand,
     });
 
-    toast(stockAffected ? 'Sale logged.' : 'Onhand sale logged — stock not affected.');
+    toast(`${stockAffected ? 'Sale logged.' : 'Onhand sale logged — stock not affected.'}${usePackaging ? ' Packaging taken off.' : ''}`);
     setGross(''); setNet('');
     reload();
   }
@@ -158,9 +165,10 @@ export default function Sales({ data, reload, brand }) {
         await saveProduct(updated);
       }
     }
+    if (entry.packaging_used) await applyOrderPackaging(entry.brand || brand, 1);
     await deleteSettlementBySale(entry.id);
     await deleteSale(entry.id);
-    toast(stockAffected ? 'Sale undone, stock restored.' : 'Onhand sale undone.');
+    toast(`${stockAffected ? 'Sale undone, stock restored.' : 'Onhand sale undone.'}${entry.packaging_used ? ' Packaging put back.' : ''}`);
     reload();
   }
 
@@ -320,6 +328,7 @@ export default function Sales({ data, reload, brand }) {
           </div>
         </div>
         <div className="mini-note">Net updates instantly from Gross and the commission box — you can still type over it directly if needed.</div>
+        <PackedToggle data={data} brand={brand} checked={packed} onChange={setPacked} />
         <button className="btn" style={{ marginTop: 10 }} onClick={handleSubmit}>Log sale</button>
       </div>
 
